@@ -1,0 +1,174 @@
+app:
+  port: "7910"
+  # Сохроняется в cfg можно использовать в коде
+  is_prod: false
+
+security:
+  # Клчюч шифрование данных в БД и Redis, должен быть 32 байта для AES-256
+  master_key: "siMemhuQfTlfKXiFxmVvmQKVSqRELrzQ"
+
+jwt:
+  enabled: true
+  # Время жизни Access токена в минутах
+  access_ttl: 10080
+  
+  # ПУТИ К КЛЮЧАМ
+  # Для Auth-сервиса (который ВЫПУСКАЕТ токены) обязательно нужны оба ключа:
+  private_key_path: "./config/certs/private.pem"
+  public_key_path: "./config/certs/public.pem"
+  
+  # ВАЖНО: 
+  # В других микросервисах (которые только ПРОВЕРЯЮТ токены)
+  # поле private_key_path должно быть пустым ("") или вообще удалено,
+  # а public_key_path должен указывать на публичный ключ!
+
+# ==========================================
+# Настройки gRPC сервера
+# ==========================================
+grpc:
+  # Порт, на котором будет запущен gRPC сервер (по умолчанию 50051)
+  port: "50051"
+
+  # Максимальный размер входящего сообщения в байтах
+  # По умолчанию в gRPC стоит жесткий лимит в 4 МБ (4194304 байт).
+  # Если микросервисы обмениваются тяжелыми массивами данных, увеличьте это значение (например, 16 МБ = 16777216)
+  max_recv_msg_size: 4194304
+
+  # Максимальный размер исходящего сообщения в байтах
+  max_send_msg_size: 4194304
+
+  # Настройки KeepAlive (критически важно для балансировщиков нагрузки, вроде Nginx или Envoy в K8s)
+  # Как часто сервер пингует клиента для поддержания TCP-соединения открытым (в секундах). 7200 = 2 часа.
+  keepalive_time: 7200
+  
+  # Сколько секунд ждать ответа на пинг перед тем, как принудительно разорвать "зависшее" соединение.
+  keepalive_timeout: 20
+
+  # Настройки TLS шифрования (для безопасного общения микросервисов внутри кластера)
+  tls:
+    enabled: false
+    # Пути к сертификатам (имеют смысл только если enabled: true)
+    cert_file: "./certs/grpc-server.crt"
+    key_file: "./certs/grpc-server.key"
+
+core: #не реализованно
+  # Strict mode запрещает пробрасывать функции из неразрешенных пакетов
+  # для перечисленных в modulse в него можно внести [handler, router, service, repository]
+  # Context и cfg разрешен везде
+  # Hanler позволен service, validation
+  # Repository позволен pgx pool, redis pool, pkg
+  # Router позволен hanler, Middleware
+  # Service позволен pkg, repository
+  # pkg позволен pgx pool, redis pool
+  strict_mode: true
+  modules:
+    - handler
+    - router
+    - service
+    - repository
+    - pkg
+
+cors:
+  enabled: true
+
+  # Разрешенные домены.
+  # В dev-среде можно использовать "*", но лучше явно указывать порты локалхоста.
+  allow_origins:
+    - "http://localhost:3000"
+    - "http://localhost:5173"
+    - "http://127.0.0.1:5173"
+    - "http://localhost:7910"
+
+  # Разрешенные HTTP-методы (если оставить пустым, Fiber подставит стандартные)
+  allow_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+    - "PATCH"
+
+  # Разрешенные заголовки
+  allow_headers:
+    - "Origin"
+    - "Content-Type"
+    - "Accept"
+    - "Authorization"
+
+  # Обязательно true, если ты используешь JWT в Cookies или Basic Auth!
+  allow_credentials: true
+
+postgresql:
+  db_host: "localhost"
+  db_port: "5432"
+  db_name: "core-test"
+  user: "core-test"
+  password: "core-test"
+
+  # db_names:
+  #   - "db-1"
+  #   - "db-2"
+  #   - "db-3"
+
+redis:
+  # Режим работы. Доступные варианты:
+  # - "standalone" : Одиночный инстанс (для локальной разработки)
+  # - "cluster" : Режим Redis Cluster (шардирование, умный роутинг)
+  # - "master_replica" : Ручное разделение на 1 Master (для записи) и Replicas (для чтения)
+  mode: "standalone"
+
+  # Адреса мастер-нод (или адрес одиночного сервера)
+  # В режиме standalone нужен только один. В режиме cluster перечисляем несколько.
+  master_addrs:
+    - "localhost:6379"
+    # - "redis-node-2:6379" (пример для кластера)
+
+  # Адреса реплик (Используется ТОЛЬКО если mode: "master_replica")
+  replica_addrs:
+    - "localhost:6380"
+
+  password: "dev_secret_password"
+
+  # Настройки пула соединений
+  pool_size: 100 # Максимальное количество одновременных соединений (для высоких нагрузок)
+  min_idle_conns: 10 # Сколько соединений держать всегда открытыми (чтобы не тратить время на handshake)
+
+kafka:
+  enabled: true
+
+  sasl_enabled: false
+  tls_enable: "none"
+
+  user: "auth_service"
+  password: "auth-password"
+
+  group_id: "user_data"
+  brokers:
+    - "localhost:9092"
+    # Автосоздание топиков список исключительно для тестов
+    # теставая kafka должна иметь возможность автомотического создания топиков
+  topics:
+    - "mail-data"
+    - "synk-auth"
+
+  outbox_relay:
+    enabled: true
+    # Интервал в ms между которым будут отпровлятся пакеты до зополнения буфера
+    tick: 50
+    # Размер буфера после чего пакеты будут принудительно отправлены в количистве сообщений
+    max_attempts: 5
+    # Таймаут записи в кафка в секундах
+    write_timeout: 10
+
+
+prometheus:
+  enabled: false
+  secure: true
+  user: "prom_scraper"
+  password: "v5mTsaqSgy+xBhX1trQIdjDN4foaESzHfN9JCgTVdes="
+  service_name: "service_name"
+
+jaeger:
+  enabled: false
+  service_name: "service_name"
+  url: "localhost:4317"

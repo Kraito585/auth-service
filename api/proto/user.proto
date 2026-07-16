@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+// Указываем, как будет называться сгенерированный Go-пакет
+option go_package = "my-service/pkg/api/proto";
+
+package user;
+
+// Описываем сам сервис и его методы
+service UserService {
+    rpc GetUser (GetUserRequest) returns (GetUserResponse);
+}
+
+// Описываем входящие данные
+message GetUserRequest {
+    string id = 1;
+}
+
+// Описываем исходящие данные
+message GetUserResponse {
+    string id = 1;
+    string name = 2;
+    string email = 3;
+}

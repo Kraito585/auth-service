@@ -1,0 +1,124 @@
+# ==============================================================================
+# ГЛОБАЛЬНЫЙ МАРШРУТИЗАТОР
+# ==============================================================================
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: "$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS"
+      when: never
+    - if: "$CI_COMMIT_BRANCH"
+
+stages:
+#  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+# ==============================================================================
+# БАЗОВЫЙ ШАБЛОН ТЕСТИРОВАНИЯ
+# ==============================================================================
+# .integration_tests_base:
+#   stage: test
+#   tags:
+#     - old-docker-runner
+#   image: docker:27.0.3
+#   services:
+#     - name: docker:27.0.3-dind
+#       command: ["--tls=false"]
+#   before_script:
+#     - 'echo "Содержимое папки migrations:"'
+#     - "ls -la migrations/"
+#     - 'echo ''KafkaServer { org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="admin-password" user_admin="admin-password" user_auth_service="auth-password" user_messenger="messenger-password"; };'' > kafka_server_jaas.conf'
+#     - 'echo "Generated kafka_server_jaas.conf successfully."'
+#     - "docker compose -f docker-compose.test.yml up -d --build postgres_test redis_api redis_worker_sync redis_worker_alt kafka replica_2 replica_3 replica_4"
+#     - 'echo "Waiting for services to be healthy..."'
+#     - 'for i in {1..30}; do HEALTHY_COUNT=$(docker ps | grep "healthy" | wc -l); if [ "$HEALTHY_COUNT" -ge 5 ]; then echo "All services are healthy!"; break; fi; echo "Waiting ($i/30)..."; sleep 5; done'
+#   script:
+#     - "sleep 10"
+#     - "docker compose -f docker-compose.test.yml up -d --build replica_2 replica_3 replica_4"
+#     - 'echo "Waiting for all replicas and Kafka to sync..."'
+#     - "sleep 30"
+#     - "docker compose -f docker-compose.test.yml run --rm --build replica_1 go test -v -timeout 600s ./pkg/test/..."
+
+# # ==============================================================================
+# # ВАРИАНТ 1: ПОДРОБНЫЕ ЛОГИ (Запускается на MR или по тегу deepLogs)
+# # ==============================================================================
+# integration_tests_deep:
+#   extends: .integration_tests_base
+#   rules:
+#     - if: '$CI_COMMIT_BRANCH == "main"'
+#       when: never
+#     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#       when: on_success
+#     - if: "$CI_COMMIT_MESSAGE =~ /deepLogs/"
+#       when: on_success
+#     - when: never
+#   after_script:
+#     - 'echo "🔍 РЕЖИМ ГЛУБОКОГО ДЕБАГА ВКЛЮЧЕН"'
+#     - 'for container in postgres_test_env redis_api kafka auth-service-replica_2-1 auth-service-replica_3-1 auth-service-replica_4-1; do echo ">>> LOGS FOR $container <<<"; docker logs $container || true; done'
+#     - "docker compose -f docker-compose.test.yml down -v"
+#     - "rm -f kafka_server_jaas.conf"
+
+# # ==============================================================================
+# # ВАРИАНТ 2: ЛЕГКИЕ ЛОГИ (Обычные коммиты без тега)
+# # ==============================================================================
+# integration_tests_light:
+#   extends: .integration_tests_base
+#   rules:
+#     - if: '$CI_COMMIT_BRANCH == "main"'
+#       when: never
+#     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#       when: never
+#     - if: "$CI_COMMIT_MESSAGE =~ /deepLogs/"
+#       when: never
+#     - when: on_success
+#   after_script:
+#     - 'echo "⚡ ЛЕГКИЙ РЕЖИМ - Только логи реплик сервиса"'
+#     - 'for container in auth-service-replica_2-1 auth-service-replica_3-1 auth-service-replica_4-1; do echo ">>> LOGS FOR $container <<<"; docker logs $container || true; done'
+#     - "docker compose -f docker-compose.test.yml down -v"
+#     - "rm -f kafka_server_jaas.conf"
+# ==============================================================================
+# ЭТАП 2: СБОРКА ОБРАЗА
+# ==============================================================================
+build_production_image:
+  stage: build
+  tags:
+    - k8s-runner
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - echo "Начинаем сборку OCI-образа внутри Kubernetes без Docker демона!"
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor --context "${CI_PROJECT_DIR}" --dockerfile "${CI_PROJECT_DIR}/Dockerfile" --destination "${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}" --destination "${CI_REGISTRY_IMAGE}:latest"
+
+# ==============================================================================
+# ЭТАП 3: АВТОМАТИЧЕСКИЙ ДЕПЛОЙ
+# ==============================================================================
+deploy_to_production:
+  stage: deploy
+  tags:
+    - k8s-runner
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  image:
+    name: bitnami/kubectl:latest
+    entrypoint: [""]
+  script:
+    - echo "🚀 Инициализация контекста безопасности Kubernetes..."
+    - kubectl config set-cluster k8s-cluster --server=https://kubernetes.default.svc.cluster.local:443 --insecure-skip-tls-verify=true
+    - kubectl config set-credentials sa-user --token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+    - kubectl config set-context prod-context --cluster=k8s-cluster --user=sa-user --namespace=social
+    - kubectl config use-context prod-context
+
+    - echo "📦 Запуск Rolling Update для auth-service..."
+    - kubectl set image deployment/auth-service auth-service=${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA} -n social
+
+    - kubectl rollout status deployment auth-service -n social --timeout=120s
+    - echo "✅ Деплой успешно завершен! Новая версия запущена."
