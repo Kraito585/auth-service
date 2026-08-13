@@ -1,0 +1,84 @@
+steps:
+  test:
+    image: golang:1.25-alpine
+    commands:
+      - go mod download
+      - go test -v ./...
+    when:
+      - event: pull_request
+        branch: main
+        evaluate: 'not (CI_COMMIT_MESSAGE contains "[test]")'
+
+  pr-comment:
+    image: curlimages/curl:latest
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - >
+        curl -s -X POST 
+        -H "Authorization: Bearer $GITHUB_TOKEN" 
+        -H "Accept: application/vnd.github+json" 
+        https://api.github.com/repos/$CI_REPO/issues/$CI_COMMIT_PULL_REQUEST/comments 
+        -d '{"body": "✅ **Woodpecker CI:** Тесты пройдены успешно! Код готов к слиянию."}'
+    when:
+      - event: pull_request
+        branch: main
+        status: success
+
+  publish-image-main:
+    image: woodpeckerci/plugin-docker-buildx
+    privileged: true
+    settings:
+      registry: ghcr.io
+      repo: ghcr.io/Kraito585/auth-service
+      tags: latest
+      username: Kraito585
+      password:
+        from_secret: github_token
+    when:
+      - event: push
+        branch: main
+        evaluate: 'not (CI_COMMIT_MESSAGE contains "[build]")'
+
+  publish-image-kraito:
+    image: woodpeckerci/plugin-docker-buildx
+    privileged: true
+    settings:
+      registry: ghcr.io
+      repo: ghcr.io/Kraito585/auth-service
+      tags: test
+      username: Kraito585
+      password:
+        from_secret: github_token
+    when:
+      - event: push
+        branch: kraito
+        evaluate: 'not (CI_COMMIT_MESSAGE contains "[build]")'
+
+  deploy:
+    image: appleboy/drone-ssh
+    settings:
+      host:
+        from_secret: deploy_host
+      username: deployer
+      port: 22
+      key:
+        from_secret: deploy_ssh_key
+      script:
+        - echo $GITHUB_TOKEN | sudo /home/deployer/deploy-master.sh auth-service-backend
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    when:
+      - event: push
+        branch: kraito
+        evaluate: 'not (CI_COMMIT_MESSAGE contains "[deploy]")'
+
+when:
+  - event: push
+    branch:
+      - main
+      - kraito
+  - event: pull_request
+    branch: main
