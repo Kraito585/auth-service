@@ -1,0 +1,204 @@
+{
+  "baseUrl": "http://localhost:7910",
+  "apiVersion": "/api/v1",
+  "responseFormat": {
+    "success": true,
+    "data": {},
+    "error": {
+      "code": 400,
+      "message": "string",
+      "details": "any"
+    }
+  },
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/v1/register",
+      "auth": "none",
+      "description": "Регистрация пользователя",
+      "request": {
+        "login": "string",
+        "email": "string",
+        "password": "string"
+      },
+      "response": {
+        "jwt": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/login",
+      "auth": "none",
+      "description": "Начало входа",
+      "request": {
+        "login": "string"
+      },
+      "response": {
+        "authType": "string",
+        "code": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/resend/email",
+      "auth": "bearer",
+      "description": "Повторная отправка кода подтверждения",
+      "response": {
+        "success": true,
+        "message": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/confirm/code",
+      "auth": "bearer",
+      "description": "Подтверждение email",
+      "request": {
+        "code": "string"
+      },
+      "response": {
+        "jwt": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/refresh",
+      "auth": "cookie",
+      "description": "Обновление access токенов",
+      "response": {
+        "access_token": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/hot/swap/email",
+      "auth": "bearer",
+      "description": "Смена email, без подтверждения старого email только для регистрации",
+      "request": {
+        "email": "string"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/get/totp",
+      "auth": "bearer",
+      "description": "Получение ссылки TOTP",
+      "response": {
+        "totp_url": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/confirm/totp",
+      "auth": "bearer",
+      "description": "Подтверждение TOTP",
+      "request": {
+        "code": "string"
+      },
+      "response": {
+        "codes": ["string"]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login/password",
+      "auth": "bearer_mfa",
+      "description": "Аутентификация через пароль",
+      "request": {
+        "password": "string"
+      },
+      "response": {
+        "jwt": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login/password-email",
+      "auth": "bearer_mfa",
+      "description": "Подтверждение пароля и email-кода",
+      "request": {
+        "password": "string",
+        "code": "string"
+      },
+      "response": {
+        "jwt": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login/password-totp",
+      "auth": "bearer_mfa",
+      "description": "Подтверждение пароля и TOTP",
+      "request": {
+        "password": "string",
+        "code": "string"
+      },
+      "response": {
+        "jwt": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login/totp",
+      "auth": "bearer_mfa",
+      "description": "Подтверждение TOTP",
+      "request": {
+        "code": "string"
+      },
+      "response": {
+        "jwt": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login/resend/email",
+      "auth": "bearer_mfa",
+      "description": "Повторная отправка кода в MFA-потоке"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sso",
+      "auth": "bearer",
+      "description": "Создание SSO-кода",
+      "response": {
+        "code": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sso/partner/exchange",
+      "auth": "api_key",
+      "description": "Обмен SSO-токена",
+      "request": {
+        "token": "string",
+        "ip": "string",
+        "agent": "string"
+      },
+      "response": {
+        "PublicToken": "string",
+        "RefreshToken": "string"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sso/partner/refresh",
+      "auth": "api_key",
+      "description": "Обновление SSO refresh-токена",
+      "request": {
+        "refreshKey": "string",
+        "ip": "string",
+        "agent": "string"
+      },
+      "response": {
+        "PublicToken": "string",
+        "RefreshToken": "string"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/core-status",
+      "auth": "none",
+      "description": "Проверка состояния сервиса"
+    }
+  ]
+}

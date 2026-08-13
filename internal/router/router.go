@@ -28,52 +28,68 @@ func SetupRoutes(
 	{
 		api.Get("/core-status", coreHandler.BaseStatus)
 
+		// Роуты регистрации
 		api.Post("/register",
 			midManager.RateLimit("register", 3, 10*time.Minute),
+			midManager.tracingMiddleware("register"),
 			defaultHandler.Register,
-		)
-
-		api.Post("/login",
-			midManager.RateLimit("login", 5, 1*time.Minute),
-			defaultHandler.Login,
 		)
 
 		api.Post("/resend/email",
 			midManager.RequireAuth(),
 			midManager.RateLimit("resend_email_auth", 1, 1*time.Minute),
+			midManager.tracingMiddleware("resend_email"),
 			defaultHandler.ResendEmail,
 		)
 
 		api.Post("/confirm/code",
 			midManager.RequireAuth(),
 			midManager.RateLimit("confirm_code", 5, 3*time.Minute),
+			midManager.tracingMiddleware("confirm_code"),
 			defaultHandler.ConfirmCode,
 		)
 
 		api.Post("/refresh",
 			midManager.RateLimit("refresh", 20, 1*time.Minute),
+			midManager.tracingMiddleware("refresh"),
 			defaultHandler.Refresh,
 		)
 
 		api.Post("/hot/swap/email",
 			midManager.RequireAuth(),
 			midManager.RateLimit("swap_email", 3, 10*time.Minute),
+			midManager.tracingMiddleware("swap_email"),
 			defaultHandler.HotSwapEmail,
 		)
 
+		// Включение TOTP
 		api.Get("/get/totp",
 			midManager.RequireStrictAuth(),
 			midManager.RateLimit("get_totp", 3, 5*time.Minute),
+			midManager.tracingMiddleware("get_totp"),
 			defaultHandler.NewTOTP,
 		)
 
 		api.Post("/confirm/totp",
 			midManager.RequireStrictAuth(),
 			midManager.RateLimit("confirm_totp", 5, 5*time.Minute),
+			midManager.tracingMiddleware("confirm_totp"),
 			defaultHandler.ConfirmTOTP,
 		)
 
-		auth := api.Group("/auth/login", midManager.RequireMFAToken())
+		// Роуты авторизации
+		auth := api.Group("/auth/login",
+			midManager.RateLimit("auth_login", 10, 1*time.Minute),
+			midManager.tracingMiddleware("auth_login"),
+			midManager.RequireMFAToken()
+		)
+
+		api.Post("/login",
+			midManager.RateLimit("login", 5, 1*time.Minute),
+			midManager.tracingMiddleware("login"),
+			defaultHandler.Login,
+		)
+
 		{
 			mfaLimiter := midManager.RateLimit("mfa_attempts", 5, 1*time.Minute)
 
@@ -84,6 +100,7 @@ func SetupRoutes(
 
 			auth.Post("/resend/email",
 				midManager.RateLimit("resend_email_mfa", 1, 1*time.Minute),
+				midManager.tracingMiddleware("resend_email_mfa"),
 				defaultHandler.ResendEmail,
 			)
 		}
