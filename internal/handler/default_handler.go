@@ -48,7 +48,7 @@ func (h *DefaultHandler) Register(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   false,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	} else {
 		c.Cookie(&fiber.Cookie{
@@ -58,7 +58,7 @@ func (h *DefaultHandler) Register(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   true,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	}
 
@@ -119,7 +119,7 @@ func (h *DefaultHandler) Refresh(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   false,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	} else {
 		c.Cookie(&fiber.Cookie{
@@ -129,7 +129,7 @@ func (h *DefaultHandler) Refresh(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   true,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	}
 
@@ -184,7 +184,7 @@ func (h *DefaultHandler) ConfirmCode(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   false,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	} else {
 		c.Cookie(&fiber.Cookie{
@@ -194,7 +194,7 @@ func (h *DefaultHandler) ConfirmCode(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   true,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	}
 
@@ -287,7 +287,7 @@ func (h *DefaultHandler) LoginAuthMethodPassword(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   false,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	} else {
 		c.Cookie(&fiber.Cookie{
@@ -297,7 +297,7 @@ func (h *DefaultHandler) LoginAuthMethodPassword(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   true,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	}
 
@@ -332,7 +332,7 @@ func (h *DefaultHandler) LoginAuthMethodPasswordEmail(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   false,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	} else {
 		c.Cookie(&fiber.Cookie{
@@ -342,7 +342,7 @@ func (h *DefaultHandler) LoginAuthMethodPasswordEmail(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   true,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	}
 
@@ -377,7 +377,7 @@ func (h *DefaultHandler) LoginAuthMethodPasswordTOTP(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   false,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	} else {
 		c.Cookie(&fiber.Cookie{
@@ -387,7 +387,7 @@ func (h *DefaultHandler) LoginAuthMethodPasswordTOTP(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   true,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	}
 
@@ -423,7 +423,7 @@ func (h *DefaultHandler) LoginAuthMethodTOTP(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   false,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	} else {
 		c.Cookie(&fiber.Cookie{
@@ -433,7 +433,7 @@ func (h *DefaultHandler) LoginAuthMethodTOTP(c fiber.Ctx) error {
 			HTTPOnly: true,
 			Secure:   true,
 			SameSite: "Strict",
-			Path:     "/api/v1/auth/refresh",
+			Path:     "/api/v1/refresh",
 		})
 	}
 
