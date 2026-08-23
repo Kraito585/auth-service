@@ -133,7 +133,7 @@ func (h *DefaultHandler) Refresh(c fiber.Ctx) error {
 		})
 	}
 	return response.OK(c, fiber.Map{
-		"jwt": newAccess,
+		"access_token": newAccess,
 	})
 }
 
