@@ -323,7 +323,7 @@ func (r *DefaultRepository) Login(ctx context.Context, login string) (string, st
 	ctx, span := defaultRepoTracer.Start(ctx, "repository.Login")
 	defer span.End()
 
-	query := "SELECT id, auth_preference FROM users WHERE login = $1"
+	query := "SELECT id, auth_preference FROM users WHERE login OR email = $1"
 	var UUID string
 	var authType string
 
