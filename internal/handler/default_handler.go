@@ -22,6 +22,16 @@ func NewDefaultHandler(srv *service.DefaultService, is_prod bool) *DefaultHandle
 
 var handlerTracer = otel.Tracer("http-handler")
 
+// ____/\\\\\\\\\______/\\\\\\\\\\\\\\\_____/\\\\\\\\\\\\__/\\\\\\\\\\\_____/\\\\\\\\\\\____/\\\\\\\\\\\\\\\__/\\\\\\\\\\\\\\\____/\\\\\\\\\_____
+//  __/\\\///////\\\___\/\\\///////////____/\\\//////////__\/////\\\///____/\\\/////////\\\_\///////\\\/////__\/\\\///////////___/\\\///////\\\___
+//   _\/\\\_____\/\\\___\/\\\______________/\\\_________________\/\\\______\//\\\______\///________\/\\\_______\/\\\_____________\/\\\_____\/\\\___
+//    _\/\\\\\\\\\\\/____\/\\\\\\\\\\\_____\/\\\____/\\\\\\\_____\/\\\_______\////\\\_______________\/\\\_______\/\\\\\\\\\\\_____\/\\\\\\\\\\\/____
+//     _\/\\\//////\\\____\/\\\///////______\/\\\___\/////\\\_____\/\\\__________\////\\\____________\/\\\_______\/\\\///////______\/\\\//////\\\____
+//      _\/\\\____\//\\\___\/\\\_____________\/\\\_______\/\\\_____\/\\\_____________\////\\\_________\/\\\_______\/\\\_____________\/\\\____\//\\\___
+//       _\/\\\_____\//\\\__\/\\\_____________\/\\\_______\/\\\_____\/\\\______/\\\______\//\\\________\/\\\_______\/\\\_____________\/\\\_____\//\\\__
+//        _\/\\\______\//\\\_\/\\\\\\\\\\\\\\\_\//\\\\\\\\\\\\/___/\\\\\\\\\\\_\///\\\\\\\\\\\/_________\/\\\_______\/\\\\\\\\\\\\\\\_\/\\\______\//\\\_
+//         _\///________\///__\///////////////___\////////////____\///////////____\///////////___________\///________\///////////////__\///________\///__
+
 func (h *DefaultHandler) Register(c fiber.Ctx) error {
 	ctx, span := handlerTracer.Start(c.Context(), "handler.Register")
 	defer span.End()
@@ -63,7 +73,7 @@ func (h *DefaultHandler) Register(c fiber.Ctx) error {
 	}
 
 	return response.OK(c, fiber.Map{
-		"jwt": res.AccessToken,
+		"access_token": res.AccessToken,
 	})
 }
 
@@ -198,9 +208,19 @@ func (h *DefaultHandler) ConfirmCode(c fiber.Ctx) error {
 	}
 
 	return response.OK(c, fiber.Map{
-		"jwt": publicToken,
+		"access_token": publicToken,
 	})
 }
+
+// __/\\\\\\\\\\\\\\\_______/\\\\\_______/\\\\\\\\\\\\\\\__/\\\\\\\\\\\\\___
+//  _\///////\\\/////______/\\\///\\\____\///////\\\/////__\/\\\/////////\\\_
+//   _______\/\\\_________/\\\/__\///\\\________\/\\\_______\/\\\_______\/\\\_
+//    _______\/\\\________/\\\______\//\\\_______\/\\\_______\/\\\\\\\\\\\\\/__
+//     _______\/\\\_______\/\\\_______\/\\\_______\/\\\_______\/\\\/////////____
+//      _______\/\\\_______\//\\\______/\\\________\/\\\_______\/\\\_____________
+//       _______\/\\\________\///\\\__/\\\__________\/\\\_______\/\\\_____________
+//        _______\/\\\__________\///\\\\\/___________\/\\\_______\/\\\_____________
+//         _______\///_____________\/////_____________\///________\///______________
 
 func (h *DefaultHandler) NewTOTP(c fiber.Ctx) error {
 	ctx, span := handlerTracer.Start(c.Context(), "handler.NewTOTP")
@@ -239,6 +259,16 @@ func (h *DefaultHandler) ConfirmTOTP(c fiber.Ctx) error {
 	})
 }
 
+// __/\\\___________________/\\\\\__________/\\\\\\\\\\\\__/\\\\\\\\\\\__/\\\\\_____/\\\_
+//  _\/\\\_________________/\\\///\\\______/\\\//////////__\/////\\\///__\/\\\\\\___\/\\\_
+//   _\/\\\_______________/\\\/__\///\\\___/\\\_________________\/\\\_____\/\\\/\\\__\/\\\_
+//    _\/\\\______________/\\\______\//\\\_\/\\\____/\\\\\\\_____\/\\\_____\/\\\//\\\_\/\\\_
+//     _\/\\\_____________\/\\\_______\/\\\_\/\\\___\/////\\\_____\/\\\_____\/\\\\//\\\\/\\\_
+//      _\/\\\_____________\//\\\______/\\\__\/\\\_______\/\\\_____\/\\\_____\/\\\_\//\\\/\\\_
+//       _\/\\\______________\///\\\__/\\\____\/\\\_______\/\\\_____\/\\\_____\/\\\__\//\\\\\\_
+//        _\/\\\\\\\\\\\\\\\____\///\\\\\/_____\//\\\\\\\\\\\\/___/\\\\\\\\\\\_\/\\\___\//\\\\\_
+//         _\///////////////_______\/////________\////////////____\///////////__\///_____\/////__
+
 func (h *DefaultHandler) Login(c fiber.Ctx) error {
 	ctx, span := handlerTracer.Start(c.Context(), "handler.Login")
 	defer span.End()
@@ -273,7 +303,7 @@ func (h *DefaultHandler) LoginAuthMethodPassword(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
 	}
-	refreshToken, publicToken, err := h.srv.LoginAuthMethodPassword(ctx, UUID, req.Password, clientIP, userAgent)
+	refreshToken, accessToken, err := h.srv.LoginAuthMethodPassword(ctx, UUID, req.Password, clientIP, userAgent)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "ошибка входа в аккаунт", err.Error())
 	}
@@ -301,7 +331,7 @@ func (h *DefaultHandler) LoginAuthMethodPassword(c fiber.Ctx) error {
 	}
 
 	return response.OK(c, fiber.Map{
-		"jwt": publicToken,
+		"access_token": accessToken,
 	})
 }
 
@@ -318,7 +348,7 @@ func (h *DefaultHandler) LoginAuthMethodPasswordEmail(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
 	}
-	refreshToken, publicToken, err := h.srv.LoginAuthMethodPasswordEmail(ctx, UUID, req.Password, req.Code, clientIP, userAgent)
+	refreshToken, accessToken, err := h.srv.LoginAuthMethodPasswordEmail(ctx, UUID, req.Password, req.Code, clientIP, userAgent)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "ошибка входа в аккаунт", err.Error())
 	}
@@ -346,7 +376,7 @@ func (h *DefaultHandler) LoginAuthMethodPasswordEmail(c fiber.Ctx) error {
 	}
 
 	return response.OK(c, fiber.Map{
-		"jwt": publicToken,
+		"access_token": accessToken,
 	})
 }
 
@@ -363,7 +393,7 @@ func (h *DefaultHandler) LoginAuthMethodPasswordTOTP(c fiber.Ctx) error {
 	if err := c.Bind().JSON(&req); err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
 	}
-	refreshToken, publicToken, err := h.srv.LoginAuthMethodPasswordTOTP(ctx, UUID, req.Password, req.Code, clientIP, userAgent)
+	refreshToken, accessToken, err := h.srv.LoginAuthMethodPasswordTOTP(ctx, UUID, req.Password, req.Code, clientIP, userAgent)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "ошибка входа в аккаунт", err.Error())
 	}
@@ -391,7 +421,7 @@ func (h *DefaultHandler) LoginAuthMethodPasswordTOTP(c fiber.Ctx) error {
 	}
 
 	return response.OK(c, fiber.Map{
-		"jwt": publicToken,
+		"access_token": accessToken,
 	})
 }
 
@@ -409,7 +439,7 @@ func (h *DefaultHandler) LoginAuthMethodTOTP(c fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
 	}
 
-	refreshToken, publicToken, err := h.srv.LoginAuthMethodTOTP(ctx, UUID, req.Code, clientIP, userAgent)
+	refreshToken, accessToken, err := h.srv.LoginAuthMethodTOTP(ctx, UUID, req.Code, clientIP, userAgent)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "ошибка входа в аккаунт", err.Error())
 	}
@@ -437,10 +467,21 @@ func (h *DefaultHandler) LoginAuthMethodTOTP(c fiber.Ctx) error {
 	}
 
 	return response.OK(c, fiber.Map{
-		"jwt": publicToken,
+		"access_token": accessToken,
 	})
 }
 
+// _____/\\\\\\\\\\\______/\\\\\\\\\_________/\\\\\\\\\\\___
+//  ___/\\\/////////\\\__/\\\///////\\\_____/\\\/////////\\\_
+//   __\//\\\______\///__\///______\//\\\___\//\\\______\///__
+//    ___\////\\\___________________/\\\/_____\////\\\_________
+//     ______\////\\\_____________/\\\//__________\////\\\______
+//      _________\////\\\_______/\\\//________________\////\\\___
+//       __/\\\______\//\\\____/\\\/____________/\\\______\//\\\__
+//        _\///\\\\\\\\\\\/____/\\\\\\\\\\\\\\\_\///\\\\\\\\\\\/___
+//         ___\///////////_____\///////////////____\///////////_____
+
+// Создание SSO токена
 func (h *DefaultHandler) PostSSOToken(c fiber.Ctx) error {
 	ctx, span := handlerTracer.Start(c.Context(), "handler.PostSSOToken")
 	defer span.End()
@@ -457,6 +498,7 @@ func (h *DefaultHandler) PostSSOToken(c fiber.Ctx) error {
 	})
 }
 
+// Обмен SSO токена на jwt сессиию
 func (h *DefaultHandler) GetSSOToken(c fiber.Ctx) error {
 	ctx, span := handlerTracer.Start(c.Context(), "handler.GetSSOToken")
 	defer span.End()
@@ -467,13 +509,13 @@ func (h *DefaultHandler) GetSSOToken(c fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
 	}
 
-	refreshToken, publicToken, err := h.srv.GetSSOToken(ctx, req.Token, req.ClientIP, req.UserAgent)
+	refreshToken, accessToken, err := h.srv.GetSSOToken(ctx, req.Token, req.ClientIP, req.UserAgent)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "ошибка сохранения токена", err.Error())
 	}
 
 	return response.OK(c, fiber.Map{
-		"PublicToken":  publicToken,
+		"AccessToken":  accessToken,
 		"RefreshToken": refreshToken,
 	})
 }
@@ -488,13 +530,35 @@ func (h *DefaultHandler) RefreshS2S(c fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
 	}
 
-	refreshToken, publicToken, err := h.srv.Refresh(ctx, req.RefreshKey, req.ClientIP, req.UserAgent)
+	refreshToken, accessToken, err := h.srv.Refresh(ctx, req.RefreshKey, req.ClientIP, req.UserAgent)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "ошибка перевыпуска токена", err.Error())
 	}
 
 	return response.OK(c, fiber.Map{
-		"PublicToken":  publicToken,
+		"AccessToken":  accessToken,
 		"RefreshToken": refreshToken,
+	})
+}
+
+// Регистрация API ключа
+func (h *DefaultHandler) RegisterPartner(c fiber.Ctx) error {
+	ctx, span := handlerTracer.Start(c.Context(), "handler.RegisterPartner")
+	defer span.End()
+	var req model.SRequest2GetAPI
+
+	if err := c.Bind().JSON(&req); err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
+	}
+
+	UUID := c.Locals("user_id").(string)
+
+	apiKey, err := h.srv.RegisterPartner(ctx, UUID, req)
+	if err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Ошибка регистрации api ключа", err.Error())
+	}
+
+	return response.OK(c, fiber.Map{
+		"apiKey": apiKey,
 	})
 }

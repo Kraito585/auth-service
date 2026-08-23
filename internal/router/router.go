@@ -101,6 +101,12 @@ func SetupRoutes(
 			defaultHandler.PostSSOToken,
 		)
 
+		api.Post("/sso/register/partner",
+			midManager.RateLimit("mfa_attempts", 6, 1*time.Minute),
+			midManager.RequireStrictAuth(),
+			defaultHandler.RegisterPartner,
+		)
+
 		s2s := api.Group("/sso/partner",
 			midManager.RateLimit("s2s_api", 500, 1*time.Minute),
 			midManager.RequireAPIKey(),
