@@ -132,9 +132,8 @@ func (h *DefaultHandler) Refresh(c fiber.Ctx) error {
 			Path:     "/api/v1/refresh",
 		})
 	}
-
-	return c.JSON(fiber.Map{
-		"access_token": newAccess,
+	return response.OK(c, fiber.Map{
+		"jwt": newAccess,
 	})
 }
 

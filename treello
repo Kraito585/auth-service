@@ -1,0 +1,2 @@
+Вынести SSO из default (repository/service/handler) в SSO (repository/service/handler)
+Придумать и написать процедуру востоновления аккаунта
