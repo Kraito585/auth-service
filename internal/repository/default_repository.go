@@ -302,7 +302,7 @@ func (r *DefaultRepository) SaveTOTPData(ctx context.Context, UUID string, encry
 	now := time.Now()
 
 	query := "UPDATE users SET totp_secret_encrypted = $1, hash_totp_reset_codes = $2, totp_enabled_at = $3, updated_at = $3, auth_preference = $5 WHERE id = $4"
-	_, err = tx.Exec(ctx, query, encryptedSecret, codes, now, UUID, "AuthMethodPasswordTOTP")
+	_, err = tx.Exec(ctx, query, encryptedSecret, codes, now, UUID, model.AuthMethodPasswordTOTP)
 	if err != nil {
 		return fmt.Errorf("ошибка сохранения данных: %w", err)
 	}
