@@ -72,7 +72,7 @@ steps:
         from_secret: github_token
     when:
       - event: push
-        branch: kraito || main
+        branch: kraito
         evaluate: 'not (CI_COMMIT_MESSAGE contains "[deploy]")'
 
 when:
