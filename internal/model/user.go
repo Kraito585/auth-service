@@ -112,16 +112,16 @@ type RefreshS2S struct {
 	UserAgent  string `json:"agent"`
 }
 
-type Request2GerAPI struct {
+type Request2GetAPI struct {
 	URL          string `json:"url"`
-	CompanyName  string `json:"companyName"` //опционально
+	CompanyName  string `json:"companyName"`
 	FullName     string `json:"fullName"`
-	CompanyEmail string `json:"CompanyEmail"` //опционально
+	CompanyEmail string `json:"CompanyEmail"`
 }
 
-type SRequest2GerAPI struct {
+type SRequest2GetAPI struct {
 	URL          string
-	UUID         string //Аккаунт с которого была подана заявка на получение API key
+	UUID         string
 	CompanyName  string
 	FullName     string
 	CompanyEmail string

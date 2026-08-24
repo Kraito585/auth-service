@@ -31,7 +31,7 @@ steps:
     privileged: true
     settings:
       registry: ghcr.io
-      repo: ghcr.io/Kraito585/auth-service
+      repo: ghcr.io/kraito585/auth-service
       tags: latest
       username: Kraito585
       password:
@@ -46,7 +46,7 @@ steps:
     privileged: true
     settings:
       registry: ghcr.io
-      repo: ghcr.io/Kraito585/auth-service
+      repo: ghcr.io/kraito585/auth-service
       tags: test
       username: Kraito585
       password:
@@ -66,7 +66,8 @@ steps:
       key:
         from_secret: deploy_ssh_key
       script:
-        - echo $GITHUB_TOKEN | sudo /home/deployer/deploy-master.sh auth-service-backend
+        #- echo $GITHUB_TOKEN | sudo /home/deployer/deploy-master.sh auth-service-backend
+        - sudo /home/deployer/deploy-master.sh auth-service-backend
     environment:
       GITHUB_TOKEN:
         from_secret: github_token
