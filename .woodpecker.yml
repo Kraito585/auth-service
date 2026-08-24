@@ -66,6 +66,7 @@ steps:
       key:
         from_secret: deploy_ssh_key
       script:
+        #- echo $GITHUB_TOKEN | sudo /home/deployer/deploy-master.sh auth-service-backend
         - sudo /home/deployer/deploy-master.sh auth-service-backend
     environment:
       GITHUB_TOKEN:
