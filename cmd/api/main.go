@@ -37,6 +37,7 @@ func main() {
 	DefaultRepo := repository.NewDefaultRepository(
 		ms.DBPool,
 		ms.RedisClient,
+		ms.RedisUserData,
 	)
 	DefaultService := service.NewDefaultService(DefaultRepo, ms.Encryptor, ms.JWTManager, ms.AppCfg.App.IsProd)
 	DefaultHandler := handler.NewDefaultHandler(DefaultService, ms.AppCfg.App.IsProd)

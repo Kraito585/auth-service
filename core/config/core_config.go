@@ -84,6 +84,8 @@ type CoreConfig struct {
 
 	Redis RedisConfig `yaml:"redis"`
 
+	RedisUserData RedisConfig `yaml:"redis_user_data"`
+
 	GRPC GRPCConfig `yaml:"grpc"`
 
 	Kafka KafkaConfig `yaml:"kafka"`

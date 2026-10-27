@@ -12,9 +12,6 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
-// УДАЛИЛИ: var FS embed.FS
-
-// ДОБАВИЛИ: аргумент fs embed.FS
 func Run(cfg *config.CoreConfig, fs embed.FS) error {
 	slog.Info("Ожидание проверки миграций базы данных...")
 

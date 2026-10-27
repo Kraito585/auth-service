@@ -3,3 +3,5 @@
 /config/certs/*
 
 !/config/certs/.gitkeep
+
+MISSING_FUNCTIONALITY.txt

@@ -16,17 +16,20 @@ import (
 )
 
 type DefaultRepository struct {
-	db *pgxpool.Pool
-	r  *coreredis.Wrapper
+	db  *pgxpool.Pool
+	r   *coreredis.Wrapper
+	rud *coreredis.Wrapper
 }
 
 func NewDefaultRepository(
 	db *pgxpool.Pool,
 	r *coreredis.Wrapper,
+	rud *coreredis.Wrapper,
 ) *DefaultRepository {
 	return &DefaultRepository{
-		db: db,
-		r:  r,
+		db:  db,
+		r:   r,
+		rud: rud,
 	}
 }
 
@@ -63,7 +66,7 @@ func (r *DefaultRepository) Register(ctx context.Context, data model.RepoRegiste
 
 	_, err = tx.Exec(ctx, query, data.UUID, data.Login, data.Email, data.HashPassword, time.UnixMilli(data.CreatedAt))
 	if err != nil {
-		return err
+		return fmt.Errorf("ошибка записи в базу данных: %w", err)
 	}
 
 	eventId, err := uuid.NewV7()
@@ -88,6 +91,18 @@ func (r *DefaultRepository) Register(ctx context.Context, data model.RepoRegiste
 	key := "code:" + data.UUID
 	if err := r.r.Set(ctx, key, data.Code, time.Hour).Err(); err != nil {
 		return fmt.Errorf("пользователь создан, но ошибка кэша сессии: %w", err)
+	}
+
+	pData := PermData{
+		UUID:  data.UUID,
+		Perm:  "email",
+		Value: data.Email,
+	}
+
+	slog.Info("Mark")
+	err = SetUpdatePerm(ctx, tx, r.rud, pData)
+	if err != nil {
+		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -155,7 +170,6 @@ func (r *DefaultRepository) HotSwapEmail(ctx context.Context, UUID string, Email
 
 		kMailData, err := json.Marshal(map[string]interface{}{
 			"UUID":      UUID,
-			"Email":     Email,
 			"Code":      code,
 			"EventID":   mEventId.String(),
 			"UpdatedAt": now.UnixMilli(),
@@ -180,6 +194,15 @@ func (r *DefaultRepository) HotSwapEmail(ctx context.Context, UUID string, Email
 
 		return nil
 	}
+
+	pData := PermData{
+		UUID:  UUID,
+		Perm:  "email",
+		Value: Email,
+	}
+
+	err = SetUpdatePerm(ctx, r.db, r.rud, pData)
+
 	tx.Rollback(ctx)
 
 	// 2. Если обновилось 0 строк, разбираемся в причине (этот код выполнится редко)

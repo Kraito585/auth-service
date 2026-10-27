@@ -2,6 +2,8 @@ app:
   port: "7910"
   # Сохроняется в cfg можно использовать в коде
   is_prod: false
+  # Full url to auth page
+  auth_page: "http://localhost:5173/auth"
 
 security:
   # Клчюч шифрование данных в БД и Redis, должен быть 32 байта для AES-256
@@ -50,23 +52,6 @@ grpc:
     # Пути к сертификатам (имеют смысл только если enabled: true)
     cert_file: "./certs/grpc-server.crt"
     key_file: "./certs/grpc-server.key"
-
-core: #не реализованно
-  # Strict mode запрещает пробрасывать функции из неразрешенных пакетов
-  # для перечисленных в modulse в него можно внести [handler, router, service, repository]
-  # Context и cfg разрешен везде
-  # Hanler позволен service, validation
-  # Repository позволен pgx pool, redis pool, pkg
-  # Router позволен hanler, Middleware
-  # Service позволен pkg, repository
-  # pkg позволен pgx pool, redis pool
-  strict_mode: true
-  modules:
-    - handler
-    - router
-    - service
-    - repository
-    - pkg
 
 cors:
   enabled: true
@@ -133,6 +118,19 @@ redis:
   pool_size: 100 # Максимальное количество одновременных соединений (для высоких нагрузок)
   min_idle_conns: 10 # Сколько соединений держать всегда открытыми (чтобы не тратить время на handshake)
 
+redis_user_data:
+  mode: "standalone"
+  master_addrs:
+    - "localhost:6381"
+
+  replica_addrs:
+    - "localhost:6380"
+
+  password: "dev_secret_password"
+
+  pool_size: 100
+  min_idle_conns: 10
+
 kafka:
   enabled: true
 
@@ -144,7 +142,7 @@ kafka:
 
   group_id: "user_data"
   brokers:
-    - "localhost:9092"
+    - "nats://localhost:4222"
     # Автосоздание топиков список исключительно для тестов
     # теставая kafka должна иметь возможность автомотического создания топиков
   topics:

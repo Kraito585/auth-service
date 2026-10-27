@@ -2,17 +2,18 @@ package pkgkafka
 
 import (
 	"auth-service/core/config"
-	"context"
-
 	"auth-service/core/pkg/coretelemetry"
+	"context"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/segmentio/kafka-go"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
@@ -27,68 +28,93 @@ type OutboxEvent struct {
 
 type OutboxRelay struct {
 	db        *pgxpool.Pool
-	Writer    *kafka.Writer
+	nc        *nats.Conn
+	js        jetstream.JetStream
 	tick      *time.Ticker
 	isHealthy atomic.Bool
 	isProd    bool
 }
 
 func NewOutboxRelay(db *pgxpool.Pool, kCfg config.KafkaConfig, isProd bool) *OutboxRelay {
-
-	transport := &kafka.Transport{
-		SASL:        kCfg.SASLMechanism(),
-		IdleTimeout: 30 * time.Second,
-		TLS:         kCfg.TLSConfig(),
+	slog.Info("prode status: %w", isProd)
+	opts := []nats.Option{
+		nats.Name("auth-service-outbox-relay"),
+		nats.Timeout(10 * time.Second),
+		nats.ReconnectWait(2 * time.Second),
+		nats.MaxReconnects(-1), // Бесконечные реконнекты при обрыве
 	}
 
-	if !isProd {
-		client := &kafka.Client{
-			Addr:      kafka.TCP(kCfg.Brokers...),
-			Transport: transport,
-		}
+	// Если в конфиге включен TLS
+	if tlsCfg := kCfg.TLSConfig(); tlsCfg != nil {
+		opts = append(opts, nats.Secure(tlsCfg))
+	}
 
-		slog.Info("Ждем готовности Kafka...")
-		for i := 0; i < 15; i++ {
-			_, err := client.CreateTopics(context.Background(), &kafka.CreateTopicsRequest{
-				Topics: []kafka.TopicConfig{
-					{Topic: "synk_auth", NumPartitions: 1, ReplicationFactor: 1},
-					{Topic: "mail_data", NumPartitions: 1, ReplicationFactor: 1},
-				},
-			})
+	// Склеиваем массив брокеров в строку формата "nats://host1:4222,nats://host2:4222"
+	brokersURL := strings.Join(kCfg.Brokers, ",")
+
+	var nc *nats.Conn
+	var js jetstream.JetStream
+	var err error
+
+	slog.Info("Ждем готовности NATS JetStream...")
+	for i := 0; i < 15; i++ {
+		nc, err = nats.Connect(brokersURL, opts...)
+		if err == nil {
+			js, err = jetstream.New(nc)
 			if err == nil {
-				slog.Info("Kafka готова, топики проверены.")
 				break
 			}
-			slog.Info("Kafka еще не готова", slog.Int("attempt", i), slog.Any("error", err))
-			time.Sleep(2 * time.Second)
+			nc.Close()
+		}
+		slog.Info("NATS еще не готов", slog.Int("attempt", i), slog.Any("error", err))
+		time.Sleep(2 * time.Second)
+	}
+
+	if err != nil {
+		slog.Error("Не удалось подключиться к NATS после всех попыток", slog.Any("error", err))
+	} else if js != nil {
+		// Уникальный список топиков без дубликатов
+		subjects := []string{"synk_auth", "mail_data", "synk-auth", "mail-data"}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+			Name:      "EVENTS",
+			Subjects:  subjects,
+			Storage:   jetstream.FileStorage,
+			Retention: jetstream.LimitsPolicy,
+		})
+		cancel()
+
+		if err != nil {
+			slog.Error("Ошибка создания/обновления стрима в NATS", slog.Any("error", err))
+		} else {
+			slog.Info("NATS готов, стрим EVENTS обновлен.", slog.Any("subjects", subjects))
 		}
 	}
 
 	return &OutboxRelay{
-		db:   db,
-		tick: time.NewTicker(time.Duration(kCfg.OutboxRelay.Tick) * time.Millisecond),
-		Writer: &kafka.Writer{
-			Addr:                   kafka.TCP(kCfg.Brokers...),
-			Balancer:               &kafka.Hash{},
-			MaxAttempts:            5,
-			RequiredAcks:           kafka.RequireOne,
-			Transport:              transport,
-			WriteTimeout:           10 * time.Second,
-			AllowAutoTopicCreation: true,
-			BatchTimeout:           10 * time.Millisecond,
-		},
+		db:     db,
+		nc:     nc,
+		js:     js,
+		tick:   time.NewTicker(time.Duration(kCfg.OutboxRelay.Tick) * time.Millisecond),
+		isProd: isProd,
 	}
 }
 
 func (r *OutboxRelay) IsHealthy() bool {
-	return r.isHealthy.Load()
+	return r.isHealthy.Load() && r.nc != nil && r.nc.IsConnected()
 }
 
 func (r *OutboxRelay) Start(ctx context.Context) {
-	slog.Info("Outbox Relay started")
+	slog.Info("Outbox Relay started (NATS JetStream)")
 	r.isHealthy.Store(true)
 	defer r.isHealthy.Store(false)
-	defer r.Writer.Close()
+	defer func() {
+		if r.nc != nil {
+			// Drain аккуратно досылает буфер перед закрытием соединения
+			_ = r.nc.Drain()
+		}
+	}()
 	defer r.tick.Stop()
 
 	for {
@@ -114,18 +140,18 @@ func (r *OutboxRelay) processBatch(ctx context.Context) {
 	defer tx.Rollback(ctx)
 
 	fetchEventsSQL := `
-    UPDATE outbox_events
-        SET status = 'processing'
-        WHERE id IN (
-            SELECT id
-            FROM outbox_events
-            WHERE status = 'pending' 
-                AND (scheduled_at <= NOW())
-            ORDER BY created_at ASC
-            LIMIT $1
-            FOR UPDATE SKIP LOCKED
-        )
-    RETURNING id, event_type, topic, payload, created_at;`
+	UPDATE outbox_events
+		SET status = 'processing'
+		WHERE id IN (
+			SELECT id
+			FROM outbox_events
+			WHERE status = 'pending' 
+				AND (scheduled_at <= NOW())
+			ORDER BY created_at ASC
+			LIMIT $1
+			FOR UPDATE SKIP LOCKED
+		)
+	RETURNING id, event_type, topic, payload, created_at;`
 
 	rows, err := tx.Query(ctx, fetchEventsSQL, 50)
 	if err != nil {
@@ -146,7 +172,7 @@ func (r *OutboxRelay) processBatch(ctx context.Context) {
 		return
 	}
 
-	kafkaMsgs := make([]kafka.Message, len(events))
+	natsMsgs := make([]*nats.Msg, len(events))
 	ids := make([]uuid.UUID, len(events))
 
 	propagator := otel.GetTextMapPropagator()
@@ -154,37 +180,58 @@ func (r *OutboxRelay) processBatch(ctx context.Context) {
 	for i, e := range events {
 		timestampStr := strconv.FormatInt(e.CreatedAt.UnixNano(), 10)
 
-		headers := []kafka.Header{
-			{Key: "x-event-id", Value: []byte(e.ID.String())},
-			{Key: "x-event-type", Value: []byte(e.EventType)},
-			{Key: "x-created-at", Value: []byte(timestampStr)},
-		}
+		headers := make(nats.Header)
+		headers.Set("x-event-id", e.ID.String())
+		headers.Set("x-event-type", e.EventType)
+		headers.Set("x-created-at", timestampStr)
 
-		// Инжектим trace context (traceparent + tracestate) в headers Kafka
-		traceHeaders := make(propagation.MapCarrier)
-		propagator.Inject(ctx, traceHeaders)
-		for k, v := range traceHeaders {
-			headers = append(headers, kafka.Header{Key: k, Value: []byte(v)})
-		}
+		// Встроенная дедупликация NATS JetStream (полный аналог идемпотентности):
+		// Если транзакция в БД откатится после публикации и сообщение уйдет повторно,
+		// NATS отбросит дубликат по этому заголовку.
+		headers.Set(nats.MsgIdHdr, e.ID.String())
 
-		kafkaMsgs[i] = kafka.Message{
-			Topic:   e.Topic,
-			Key:     []byte(e.ID.String()),
-			Value:   e.Payload,
-			Headers: headers,
+		// nats.Header имеет тип map[string][]string, поэтому напрямую совместим с HeaderCarrier
+		propagator.Inject(ctx, propagation.HeaderCarrier(headers))
+
+		natsMsgs[i] = &nats.Msg{
+			Subject: e.Topic,
+			Data:    e.Payload,
+			Header:  headers,
 		}
 		ids[i] = e.ID
 	}
 
 	err = coretelemetry.ObserveKafka("write", func() error {
+		writeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
-		err = r.Writer.WriteMessages(ctx, kafkaMsgs...)
+		// Публикуем пачку асинхронно (pipeline) и ждем подтверждения сохранения на диск
+		futures := make([]jetstream.PubAckFuture, 0, len(natsMsgs))
+		for _, msg := range natsMsgs {
+			pubAckFuture, err := r.js.PublishMsgAsync(msg)
+			if err != nil {
+				return err
+			}
+			futures = append(futures, pubAckFuture)
+		}
 
-		return err
+		for _, f := range futures {
+			select {
+			case <-f.Ok():
+			case err := <-f.Err():
+				return err
+			case <-writeCtx.Done():
+				return writeCtx.Err()
+			}
+		}
+		return nil
 	})
 
 	if err != nil {
-		slog.Error("Kafka write error", slog.Any("error", err))
+		slog.Error("NATS write error",
+			slog.Any("error", err),
+			slog.String("first_event_topic", events[0].Topic),
+		)
 		return
 	}
 

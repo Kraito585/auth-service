@@ -56,6 +56,7 @@ type Microservice struct {
 	DBPool *pgxpool.Pool
 
 	RedisClient     *coreredis.Wrapper
+	RedisUserData   *coreredis.Wrapper
 	Encryptor       *security.Encryptor
 	MigrationsReady *atomic.Bool
 
@@ -257,6 +258,26 @@ func (b *Builder) WithRedis() *Builder {
 	return b
 }
 
+func (b *Builder) WithRedisUserData() *Builder {
+	if b.err != nil {
+		return b
+	}
+
+	ctx := context.Background()
+	client, err := coreredis.NewRedisManager(ctx, b.app.CoreCfg.RedisUserData)
+	if err != nil {
+		b.err = fmt.Errorf("ошибка инициализации пула Redis: %w", err)
+		return b
+	}
+
+	b.app.RedisUserData = client
+
+	redisChecker := health.NewRedisChecker(b.app.RedisUserData)
+	b.app.HealthCheckers = append(b.app.HealthCheckers, redisChecker)
+
+	return b
+}
+
 func (b *Builder) WithEncryptor() *Builder {
 	if b.err != nil {
 		return b
@@ -384,7 +405,7 @@ func (b *Builder) Build() (*Microservice, error) {
 		coreCfg.Prometheus.Secure,
 		coreCfg.Prometheus.User,
 		coreCfg.Prometheus.Password,
-		b.app.JWTManager, // <--- Прокидываем готовый JWT!
+		b.app.JWTManager,
 		b.app.RedisClient,
 		b.app.AppCfg.App.IsProd,
 	)
@@ -504,6 +525,7 @@ func (m *Microservice) Run() error {
 		slog.Info("Закрытие пула PostgreSQL...")
 		m.DBPool.Close()
 	}
+
 	if m.RedisClient != nil {
 		slog.Info("Закрытие соединений Redis...")
 		if err := m.RedisClient.Close(); err != nil {
@@ -511,6 +533,12 @@ func (m *Microservice) Run() error {
 		}
 	}
 
+	if m.RedisUserData != nil {
+		slog.Info("Закрытие соединений RedisUserData...")
+		if err := m.RedisUserData.Close(); err != nil {
+			slog.Warn("Ошибка при остановке RedisUserData", slog.Any("error", err))
+		}
+	}
 	slog.Info("Микросервис успешно остановлен. До свидания!")
 	return nil
 }
