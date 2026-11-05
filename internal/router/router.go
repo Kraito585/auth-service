@@ -6,6 +6,7 @@ import (
 	"auth-service/core/pkg/health"
 	"auth-service/internal/handler"
 	"auth-service/internal/middleware"
+	"net/url"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -19,6 +20,7 @@ func SetupRoutes(
 	defaultHandler *handler.DefaultHandler,
 	healthCheckers []health.Checker,
 	promEnabled bool,
+	authRedirectURL string,
 ) {
 	app.Use(midManager.Tracing())
 
@@ -95,7 +97,28 @@ func SetupRoutes(
 			)
 		}
 
-		api.Post("/sso",
+		//ODIC endpoints
+
+		app.Get("/oauth/authorize",
+			midManager.RateLimit("redirect auth", 6, time.Minute),
+			midManager.ValidateRedirectURI(),
+			func(c fiber.Ctx) error {
+				params := url.Values{}
+
+				params.Set("response_type", "code")
+				params.Set("client_id", c.Query("client_id"))
+				params.Set("redirect_uri", c.Query("redirect_uri"))
+				params.Set("state", c.Query("state"))
+
+				redirectURL := authRedirectURL + "?" + params.Encode()
+
+				return c.Redirect().
+					Status(fiber.StatusFound).
+					To(redirectURL)
+			},
+		)
+
+		api.Post("/sso", //Созднание кода авторизации для S2S обмена на сессию
 			midManager.RateLimit("mfa_attempts", 6, 1*time.Minute),
 			midManager.RequireStrictAuth(),
 			defaultHandler.PostSSOToken,

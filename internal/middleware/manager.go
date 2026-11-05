@@ -81,3 +81,7 @@ func (m *Manager) RateLimit(name string, max int, window time.Duration) fiber.Ha
 func (m *Manager) RequireAPIKey() fiber.Handler {
 	return pkgmiddleware.RequireAPIKey(m.redisClient)
 }
+
+func (m *Manager) ValidateRedirectURI() fiber.Handler {
+	return pkgmiddleware.ValidateRedirectURI(m.redisClient)
+}

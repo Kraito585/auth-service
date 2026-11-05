@@ -3,7 +3,7 @@ app:
   # Сохроняется в cfg можно использовать в коде
   is_prod: false
   # Full url to auth page
-  auth_page: "http://localhost:5173/auth"
+  redirect_url: "http://localhost:5173/auth"
 
 security:
   # Клчюч шифрование данных в БД и Redis, должен быть 32 байта для AES-256

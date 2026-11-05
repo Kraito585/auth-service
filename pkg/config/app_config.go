@@ -9,6 +9,7 @@ type AppConfig struct {
 		Port           string `yaml:"port" env:"PORT" env-default:"7910"`
 		MetricsEnabled bool   `yaml:"metrics_enabled" env:"METRICS_ENABLED"`
 		IsProd         bool   `yaml:"is_prod" env:"IS_PROD"`
+		RedirectURL    string `yaml:"redirect_url" env:"REDIRECT_URL"`
 	} `yaml:"app"`
 
 	Core struct {

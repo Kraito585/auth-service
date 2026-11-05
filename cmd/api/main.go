@@ -70,6 +70,7 @@ func main() {
 		DefaultHandler,
 		ms.HealthCheckers,
 		ms.CoreCfg.Prometheus.Enabled,
+		ms.AppCfg.App.RedirectURL,
 	)
 
 	// 6. ЗАПУСК! (Эта функция блокирует поток и держит приложение живым)
