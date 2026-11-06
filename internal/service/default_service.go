@@ -29,17 +29,34 @@ type TokenEncryptor interface {
 
 type DefaultService struct {
 	repo       *repository.DefaultRepository
+	utRepo     *repository.UtilsRepository
 	encryptor  TokenEncryptor
 	jwtManager *security.JWTManager
 	isProd     bool
+	accessTTL  int
+	refreshTTL int
+	fullHost   string
 }
 
-func NewDefaultService(repo *repository.DefaultRepository, enc TokenEncryptor, jwtManager *security.JWTManager, isProd bool) *DefaultService {
+func NewDefaultService(
+	repo *repository.DefaultRepository,
+	utRepo *repository.UtilsRepository,
+	enc TokenEncryptor,
+	jwtManager *security.JWTManager,
+	isProd bool,
+	accessTTL,
+	refreshTTL int,
+	fullHost string,
+) *DefaultService {
 	return &DefaultService{
 		repo:       repo,
+		utRepo:     utRepo,
 		encryptor:  enc,
 		jwtManager: jwtManager,
 		isProd:     isProd,
+		accessTTL:  accessTTL,
+		refreshTTL: refreshTTL,
+		fullHost:   fullHost,
 	}
 }
 
@@ -110,7 +127,7 @@ func (s *DefaultService) Register(ctx context.Context, req *model.RegisterReques
 		"platform":   "web",
 	}
 
-	refreshToken, err := s.jwtManager.GenerateToken(UUID.String(), 7*24*time.Hour, payload)
+	refreshToken, err := s.jwtManager.GenerateToken(UUID.String(), time.Duration(s.refreshTTL)*time.Second, payload)
 	if err != nil {
 		return nil, "", err
 	}
@@ -125,12 +142,12 @@ func (s *DefaultService) Register(ctx context.Context, req *model.RegisterReques
 
 	key := fmt.Sprintf("session:%s:%s", UUID.String(), sessionID.String())
 
-	err = s.repo.NewSession(ctx, key, session)
+	err = s.utRepo.NewSession(ctx, key, session)
 	if err != nil {
 		return nil, "", err
 	}
 
-	accessToken, err := s.jwtManager.GenerateToken(UUID.String(), 5*time.Minute, payload)
+	accessToken, err := s.jwtManager.GenerateToken(UUID.String(), time.Duration(s.accessTTL)*time.Second, payload)
 	if err != nil {
 		return nil, "", err
 	}
@@ -189,7 +206,12 @@ func (s *DefaultService) ConfirmCode(ctx context.Context, code string, UUID stri
 		slog.Error("Не удалось удалить использованный код", slog.Any("error", err))
 	}
 
-	return createSession(ctx, s.repo, s.jwtManager, false, UUID, ip, userAgent)
+	refreshToken, accessToken, _, err := CreateSession(ctx, s.utRepo, s.jwtManager, false, UUID, "", "", ip, userAgent, time.Duration(s.accessTTL)*time.Second, time.Duration(s.refreshTTL)*time.Second)
+
+	if err != nil {
+		return "", "", fmt.Errorf("Ошибка создания сессии: %w", err)
+	}
+	return refreshToken, accessToken, err
 }
 
 // __/\\\\\\\\\\\\\\\_______/\\\\\_______/\\\\\\\\\\\\\\\__/\\\\\\\\\\\\\___
@@ -297,13 +319,14 @@ func (s *DefaultService) Refresh(
 	refreshToken,
 	ip,
 	userAgent string,
-) (string, string, error) {
+	clientID string,
+) (model.TokenResponse, error) {
 	ctx, span := tracer.Start(ctx, "service.Refresh")
 	defer span.End()
 
 	claims, err := s.jwtManager.ParseAndValidate(refreshToken, "sub", "session_id")
 	if err != nil {
-		return "", "", err
+		return model.TokenResponse{}, err
 	}
 
 	// 2. Безопасно приводим типы
@@ -320,7 +343,7 @@ func (s *DefaultService) Refresh(
 
 	exists, err := s.repo.ExistSession(ctx, key)
 	if err != nil || exists == 0 {
-		return "", "", fmt.Errorf("сессия не найдена или была завершена")
+		return model.TokenResponse{}, fmt.Errorf("сессия не найдена или была завершена")
 	}
 
 	payload := map[string]interface{}{
@@ -333,32 +356,62 @@ func (s *DefaultService) Refresh(
 		payload["email"] = false
 	}
 
-	newAccess, err := s.jwtManager.GenerateToken(UUID, 5*time.Minute, payload)
+	newAccess, err := s.jwtManager.GenerateToken(UUID, time.Duration(s.accessTTL)*time.Second, payload)
 	if err != nil {
-		return "", "", err
+		return model.TokenResponse{}, err
 	}
 
-	newRefresh, err := s.jwtManager.GenerateToken(UUID, 7*24*time.Hour, payload)
+	newRefresh, err := s.jwtManager.GenerateToken(UUID, time.Duration(s.refreshTTL)*time.Second, payload)
 	if err != nil {
-		return "", "", err
+		return model.TokenResponse{}, err
 	}
 
-	now := time.Now()
+	oldSessionData, err := s.repo.GetSessionData(ctx, key)
 
 	newSessionData := model.SessionData{
 		RefreshToken: newRefresh,
 		IP:           ip,
 		UserAgent:    userAgent,
-		CreatedAt:    now.UnixMilli(),
-		ExpiresAt:    now.Add(7 * 24 * time.Hour).UnixMilli(),
+		CreatedAt:    oldSessionData.CreatedAt,
+		ExpiresAt:    time.Now().Add(7 * 24 * time.Hour).UnixMilli(),
 	}
 
-	err = s.repo.NewSession(ctx, key, newSessionData)
+	err = s.utRepo.NewSession(ctx, key, newSessionData)
 	if err != nil {
-		return "", "", err
+		return model.TokenResponse{}, err
 	}
 
-	return newAccess, newRefresh, nil
+	rowIDToken := model.IDTokenClaims{
+		Iss:      s.fullHost,
+		Sub:      UUID,
+		Aud:      clientID,
+		Iat:      time.Now().Unix(),
+		Exp:      time.Now().Add(time.Duration(s.accessTTL) * time.Second).Unix(),
+		AuthTime: oldSessionData.CreatedAt,
+		Nonce:    "",
+	}
+
+	IDToken, err := s.jwtManager.GenerateToken(UUID, time.Duration(s.accessTTL)*time.Second, map[string]interface{}{
+		"iss":       rowIDToken.Iss,
+		"sub":       rowIDToken.Sub,
+		"aud":       rowIDToken.Aud,
+		"iat":       rowIDToken.Iat,
+		"exp":       rowIDToken.Exp,
+		"auth_time": rowIDToken.AuthTime,
+		"nonce":     rowIDToken.Nonce,
+	})
+	if err != nil {
+		return model.TokenResponse{}, err
+	}
+
+	return model.TokenResponse{
+		AccessToken:  newAccess,
+		TokenType:    "Bearer",
+		ExpiresIn:    int(s.accessTTL),
+		RefreshToken: newRefresh,
+		IDToken:      IDToken,
+		Scope:        "profile email",
+	}, nil
 }
 
 // __/\\\___________________/\\\\\__________/\\\\\\\\\\\\__/\\\\\\\\\\\__/\\\\\_____/\\\_
@@ -425,7 +478,12 @@ func (s *DefaultService) LoginAuthMethodPassword(ctx context.Context, UUID strin
 		return "", "", fmt.Errorf("пароль не верен: %w", err)
 	}
 
-	return createSession(ctx, s.repo, s.jwtManager, emailLock, UUID, ip, userAgent)
+	refreshToken, accessToken, _, err := CreateSession(ctx, s.utRepo, s.jwtManager, emailLock, UUID, "", "", ip, userAgent, time.Duration(s.accessTTL)*time.Second, time.Duration(s.refreshTTL)*time.Second)
+
+	if err != nil {
+		return "", "", fmt.Errorf("Ошибка создания сессии: %w", err)
+	}
+	return refreshToken, accessToken, err
 }
 
 func (s *DefaultService) LoginAuthMethodPasswordEmail(
@@ -462,7 +520,12 @@ func (s *DefaultService) LoginAuthMethodPasswordEmail(
 		slog.Warn("Не удалось удалить использованный код", slog.Any("error", err))
 	}
 
-	return createSession(ctx, s.repo, s.jwtManager, false, UUID, ip, userAgent)
+	refreshToken, accessToken, _, err := CreateSession(ctx, s.utRepo, s.jwtManager, false, UUID, "", "", ip, userAgent, time.Duration(s.accessTTL)*time.Second, time.Duration(s.refreshTTL)*time.Second)
+
+	if err != nil {
+		return "", "", fmt.Errorf("Ошибка создания сессии: %w", err)
+	}
+	return refreshToken, accessToken, err
 }
 
 func (s *DefaultService) LoginAuthMethodPasswordTOTP(ctx context.Context,
@@ -500,7 +563,12 @@ func (s *DefaultService) LoginAuthMethodPasswordTOTP(ctx context.Context,
 		return "", "", fmt.Errorf("пароль не верен: %w", err)
 	}
 
-	return createSession(ctx, s.repo, s.jwtManager, false, UUID, ip, userAgent)
+	refreshToken, accessToken, _, err := CreateSession(ctx, s.utRepo, s.jwtManager, false, UUID, "", "", ip, userAgent, time.Duration(s.accessTTL)*time.Second, time.Duration(s.refreshTTL)*time.Second)
+
+	if err != nil {
+		return "", "", fmt.Errorf("Ошибка создания сессии: %w", err)
+	}
+	return refreshToken, accessToken, err
 }
 
 func (s *DefaultService) LoginAuthMethodTOTP(
@@ -532,80 +600,12 @@ func (s *DefaultService) LoginAuthMethodTOTP(
 		return "", "", fmt.Errorf("invalid code")
 	}
 
-	return createSession(ctx, s.repo, s.jwtManager, false, UUID, ip, userAgent)
-}
+	refreshToken, accessToken, _, err := CreateSession(ctx, s.utRepo, s.jwtManager, false, UUID, "", "", ip, userAgent, time.Duration(s.accessTTL)*time.Second, time.Duration(s.refreshTTL)*time.Second)
 
-// _____/\\\\\\\\\\\______/\\\\\\\\\_________/\\\\\\\\\\\___
-//  ___/\\\/////////\\\__/\\\///////\\\_____/\\\/////////\\\_
-//   __\//\\\______\///__\///______\//\\\___\//\\\______\///__
-//    ___\////\\\___________________/\\\/_____\////\\\_________
-//     ______\////\\\_____________/\\\//__________\////\\\______
-//      _________\////\\\_______/\\\//________________\////\\\___
-//       __/\\\______\//\\\____/\\\/____________/\\\______\//\\\__
-//        _\///\\\\\\\\\\\/____/\\\\\\\\\\\\\\\_\///\\\\\\\\\\\/___
-//         ___\///////////_____\///////////////____\///////////_____
-
-// Создание SSO токена
-func (s *DefaultService) PostSSOToken(ctx context.Context, UUID string) (string, error) {
-	token := uuid.New().String()
-
-	err := s.repo.PostSSOToken(ctx, UUID, token)
 	if err != nil {
-		return "", fmt.Errorf("не удалось сохранить токен: %w", err)
+		return "", "", fmt.Errorf("Ошибка создания сессии: %w", err)
 	}
-
-	return token, nil
-}
-
-// Обмен SSO токена на jwt сессиию
-func (s *DefaultService) GetSSOToken(ctx context.Context, token string, ip string, userAgent string) (string, string, error) {
-	UUID, err := s.repo.GetSSOToken(ctx, token)
-	if err != nil {
-		return "", "", fmt.Errorf("не удалось получить сессию по токену: %w", err)
-	}
-
-	return createSession(ctx, s.repo, s.jwtManager, false, UUID, ip, userAgent)
-}
-
-// Регистрация API ключа
-func (s *DefaultService) RegisterPartner(ctx context.Context, UUID string, req model.SRequest2GetAPI) (string, error) {
-	origin, err := NormalizeOrigin(req.URL)
-	if err != nil {
-		return "", err
-	}
-	req.URL = origin
-
-	rawAPIKey := "sk_live_" + strings.ReplaceAll(uuid.New().String(), "-", "")
-
-	hashedKey := HashAPIKey(rawAPIKey)
-
-	payload := struct {
-		URL          string `json:"url"`
-		OwnerUUID    string `json:"owner_uuid"`
-		CompanyName  string `json:"company_name,omitempty"`
-		FullName     string `json:"full_name"`
-		CompanyEmail string `json:"company_email,omitempty"`
-		TokenHash    string `json:"token_hash"`
-	}{
-		URL:          req.URL,
-		OwnerUUID:    UUID,
-		CompanyName:  req.CompanyName,
-		FullName:     req.FullName,
-		CompanyEmail: req.CompanyEmail,
-		TokenHash:    hashedKey,
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("ошибка сериализации данных партнера: %w", err)
-	}
-
-	err = s.repo.CreatePartner(ctx, req.UUID, origin, hashedKey, jsonData)
-	if err != nil {
-		return "", fmt.Errorf("ошибка создания партнера в БД: %w", err)
-	}
-
-	return rawAPIKey, nil
+	return refreshToken, accessToken, err
 }
 
 // ==================
@@ -613,60 +613,8 @@ func (s *DefaultService) RegisterPartner(ctx context.Context, UUID string, req m
 // ==================
 
 // ===================
-//	Внутрение функции
+//	Вспомогательные функции
 // ===================
-
-func createSession(
-	ctx context.Context,
-	repo *repository.DefaultRepository,
-	jwtManager *security.JWTManager,
-	emailLock bool,
-	UUID string,
-	ip string,
-	userAgent string,
-) (string, string, error) {
-	sessionID, err := uuid.NewV7()
-	if err != nil {
-		return "", "", err
-	}
-
-	payload := map[string]interface{}{
-		"role":       "user",
-		"session_id": sessionID.String(),
-		"platform":   "web",
-	}
-
-	if emailLock {
-		payload["email"] = false
-	}
-
-	refreshToken, err := jwtManager.GenerateToken(UUID, 7*24*time.Hour, payload)
-	if err != nil {
-		return "", "", err
-	}
-
-	accessToken, err := jwtManager.GenerateToken(UUID, 5*time.Minute, payload)
-	if err != nil {
-		return "", "", err
-	}
-
-	now := time.Now()
-	newSessionData := model.SessionData{
-		RefreshToken: refreshToken,
-		IP:           ip,
-		UserAgent:    userAgent,
-		CreatedAt:    now.UnixMilli(),
-		ExpiresAt:    now.Add(7 * 24 * time.Hour).UnixMilli(),
-	}
-
-	key := fmt.Sprintf("session:%s:%s", UUID, sessionID.String())
-	err = repo.NewSession(ctx, key, newSessionData)
-	if err != nil {
-		return "", "", err
-	}
-
-	return refreshToken, accessToken, nil
-}
 
 func generateNumericCode(length int) string {
 	digits := "0123456789"

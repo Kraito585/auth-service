@@ -85,7 +85,6 @@ func (m *JWTManager) ValidateToken(tokenString string) (*UserClaims, error) {
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &UserClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Проверяем, что алгоритм именно RSA
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("неожиданный метод подписи: %v", token.Header["alg"])
 		}
@@ -105,7 +104,6 @@ func (m *JWTManager) ValidateToken(tokenString string) (*UserClaims, error) {
 }
 
 func (m *JWTManager) ParseAndValidate(tokenString string, requiredFields ...string) (jwt.MapClaims, error) {
-	// 1. Парсим и проверяем криптографическую подпись
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("неожиданный метод подписи: %v", token.Header["alg"])
@@ -117,19 +115,16 @@ func (m *JWTManager) ParseAndValidate(tokenString string, requiredFields ...stri
 		return nil, fmt.Errorf("ошибка валидации токена: %w", err)
 	}
 
-	// 2. Приводим данные к удобному формату MapClaims (мапа)
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("недействительный токен")
 	}
 
-	// 3. Умная проверка: убеждаемся, что все запрошенные тобой поля реально есть
 	for _, field := range requiredFields {
 		if _, exists := claims[field]; !exists {
 			return nil, fmt.Errorf("в токене отсутствует обязательное поле: %s", field)
 		}
 	}
 
-	// Отдаем всю мапу!
 	return claims, nil
 }

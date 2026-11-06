@@ -58,6 +58,8 @@ type SessionData struct {
 	RefreshToken string `json:"refresh_token"`
 	IP           string `json:"ip"`
 	UserAgent    string `json:"user_agent"`
+	ClientID     string `json:"client_id"`
+	Nonce        string `json:"nonce"`
 	CreatedAt    int64  `json:"created_at"`
 	ExpiresAt    int64  `json:"expires_at"`
 }
@@ -98,31 +100,4 @@ type LoginData struct {
 	TOTPSecretEncrypted *string
 	EmailVerifiedAt     *time.Time
 	CurrentCode         string
-}
-
-type SSOTokenS2S struct {
-	Token     string `json:"token" validate:"required,min=17"`
-	ClientIP  string `json:"ip"`
-	UserAgent string `json:"agent"`
-}
-
-type RefreshS2S struct {
-	RefreshKey string `json:"refreshKey"`
-	ClientIP   string `json:"ip"`
-	UserAgent  string `json:"agent"`
-}
-
-type Request2GetAPI struct {
-	URL          string `json:"url"`
-	CompanyName  string `json:"companyName"`
-	FullName     string `json:"fullName"`
-	CompanyEmail string `json:"CompanyEmail"`
-}
-
-type SRequest2GetAPI struct {
-	URL          string
-	UUID         string
-	CompanyName  string
-	FullName     string
-	CompanyEmail string
 }

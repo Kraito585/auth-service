@@ -33,14 +33,47 @@ func main() {
 		os.Exit(1)
 	}
 
+	UtilsRepo := repository.NewUtilsRepository(
+		ms.DBPool,
+		ms.RedisClient,
+		ms.RedisUserData,
+	)
+
 	// 2. Инициализируем бизнес-логику (Слои чистой архитектуры)
 	DefaultRepo := repository.NewDefaultRepository(
 		ms.DBPool,
 		ms.RedisClient,
 		ms.RedisUserData,
 	)
-	DefaultService := service.NewDefaultService(DefaultRepo, ms.Encryptor, ms.JWTManager, ms.AppCfg.App.IsProd)
+	DefaultService := service.NewDefaultService(
+		DefaultRepo,
+		UtilsRepo,
+		ms.Encryptor,
+		ms.JWTManager,
+		ms.AppCfg.App.IsProd,
+		ms.AppCfg.Session.AccessTTL,
+		ms.AppCfg.Session.RefreshTTL,
+		ms.AppCfg.App.FullHost,
+	)
+
 	DefaultHandler := handler.NewDefaultHandler(DefaultService, ms.AppCfg.App.IsProd)
+
+	OidcRepo := repository.NewOidcRepository(
+		ms.DBPool,
+		ms.RedisClient,
+		ms.RedisUserData,
+	)
+	OidcService := service.NewOidcService(
+		OidcRepo,
+		UtilsRepo,
+		ms.Encryptor,
+		ms.JWTManager,
+		ms.AppCfg.App.IsProd,
+		ms.AppCfg.Session.AccessTTL,
+		ms.AppCfg.Session.RefreshTTL,
+		ms.AppCfg.App.FullHost,
+	)
+	OidcHandler := handler.NewOidcHandler(OidcService, ms.AppCfg.App.IsProd)
 
 	CoreHandler := corehandler.NewDefaultHandler(DefaultService)
 
@@ -68,6 +101,7 @@ func main() {
 		midManager,
 		CoreHandler,
 		DefaultHandler,
+		OidcHandler,
 		ms.HealthCheckers,
 		ms.CoreCfg.Prometheus.Enabled,
 		ms.AppCfg.App.RedirectURL,

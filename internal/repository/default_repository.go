@@ -111,23 +111,6 @@ func (r *DefaultRepository) Register(ctx context.Context, data model.RepoRegiste
 	return nil
 }
 
-func (r *DefaultRepository) NewSession(ctx context.Context, key string, data model.SessionData) error {
-	ctx, span := defaultRepoTracer.Start(ctx, "repository.NewSession")
-	defer span.End()
-
-	sessionBytes, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("ошибка сериализации сессии для redis: %w", err)
-	}
-
-	err = r.r.Set(ctx, key, sessionBytes, 7*24*time.Hour).Err()
-	if err != nil {
-		return fmt.Errorf("ошибка сохранения сессии: %w", err)
-	}
-
-	return nil
-}
-
 func (r *DefaultRepository) ExistSession(ctx context.Context, key string) (int64, error) {
 	ctx, span := defaultRepoTracer.Start(ctx, "repository.ExistSession")
 	defer span.End()
@@ -421,95 +404,23 @@ func (r *DefaultRepository) GetAuthData(ctx context.Context, UUID string, authMe
 	return data, nil
 }
 
-func (r *DefaultRepository) PostSSOToken(ctx context.Context, UUID string, token string) error {
-	ctx, span := defaultRepoTracer.Start(ctx, "repository.PostSSOToken")
+func (r *DefaultRepository) GetSessionData(ctx context.Context, key string) (model.SessionData, error) {
+	ctx, span := defaultRepoTracer.Start(ctx, "repository.GetSessionData")
 	defer span.End()
 
-	key := "sso:token:" + token
-	if err := r.r.Set(ctx, key, UUID, 2*time.Minute).Err(); err != nil {
-		return fmt.Errorf("ошибка сохранения кода подтверждения: %w", err)
-	}
-	return nil
-}
+	var sessionData model.SessionData
 
-func (r *DefaultRepository) GetSSOToken(ctx context.Context, token string) (string, error) {
-	ctx, span := defaultRepoTracer.Start(ctx, "repository.GetSSOToken")
-	defer span.End()
-
-	key := "sso:token:" + token
-	UUID, err := r.r.GetDel(ctx, key).Result()
+	sessionBytes, err := r.r.Get(ctx, key).Result()
 	if err == redis.Nil {
-		return "", fmt.Errorf("код аунтетификации истек или не существует")
+		return sessionData, fmt.Errorf("сессия не найдена")
 	} else if err != nil {
-		return "", fmt.Errorf("ошибка чтения кода из кэша: %w", err)
+		return sessionData, fmt.Errorf("ошибка чтения сессии из кэша: %w", err)
 	}
 
-	return UUID, nil
-}
-
-func (r *DefaultRepository) CreatePartner(ctx context.Context, UUID string, origin string, hashedKey string, jsonData []byte) error {
-	ctx, span := defaultRepoTracer.Start(ctx, "repository.CreatePartner")
-	defer span.End()
-
-	query := `
-		INSERT INTO partners (id, data, created_at)
-		VALUES ($1, $2, $3)
-	`
-
-	now := time.Now()
-
-	eventID, err := uuid.NewV7()
+	err = json.Unmarshal([]byte(sessionBytes), &sessionData)
 	if err != nil {
-		return err
+		return sessionData, fmt.Errorf("ошибка десериализации сессии: %w", err)
 	}
 
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	_, err = tx.Exec(ctx, query, UUID, jsonData, now)
-	if err != nil {
-		return fmt.Errorf("не удалось выполнить sql insert: %w", err)
-	}
-
-	kMailData, err := json.Marshal(map[string]interface{}{
-		"UUID":      UUID,
-		"EventID":   eventID,
-		"UpdatedAt": now.UnixMilli(),
-	})
-	if err != nil {
-		return fmt.Errorf("ошибка сериализации данных для outbox: %w", err)
-	}
-
-	outboxQuery := "INSERT INTO outbox_events (id, event_type, topic, payload) VALUES ($1, $2, $3, $4)"
-	_, err = tx.Exec(ctx, outboxQuery, eventID, "mail.user.create.api.key", "mail-data", kMailData)
-	if err != nil {
-		return err
-	}
-
-	err = r.r.HSet(ctx, "api:keys:secrets", hashedKey, UUID).Err()
-	if err != nil {
-		return fmt.Errorf("ошибка сохранения ключа в кэш: %w", err)
-	}
-
-	err = r.r.SAdd(ctx, "cors:allowed_origins", origin).Err()
-	if err != nil {
-		return fmt.Errorf("ошибка сохранения CORS в кэш: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		hdelErr := r.r.HDel(ctx, "api:keys:secrets", hashedKey).Err()
-		sremErr := r.r.SRem(ctx, "cors:allowed_origins", origin).Err()
-
-		// Формируем детальный отчет об ошибке, чтобы ничего не потерять
-		if hdelErr != nil || sremErr != nil {
-			return fmt.Errorf("КРИТИЧНО: провал Commit БД (%v) И провал отката Redis (HDel: %v, SRem: %v)", err, hdelErr, sremErr)
-		}
-
-		return fmt.Errorf("ошибка коммита БД, изменения в Redis успешно отменены: %w", err)
-	}
-
-	return nil
+	return sessionData, nil
 }

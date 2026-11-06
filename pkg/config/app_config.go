@@ -10,6 +10,7 @@ type AppConfig struct {
 		MetricsEnabled bool   `yaml:"metrics_enabled" env:"METRICS_ENABLED"`
 		IsProd         bool   `yaml:"is_prod" env:"IS_PROD"`
 		RedirectURL    string `yaml:"redirect_url" env:"REDIRECT_URL"`
+		FullHost       string `yaml:"full_host" env:"FULL_HOST"`
 	} `yaml:"app"`
 
 	Core struct {
@@ -17,6 +18,11 @@ type AppConfig struct {
 		// В YAML написано modulse, тег считывает именно его
 		Modules []string `yaml:"modules"`
 	} `yaml:"core"`
+
+	Session struct {
+		RefreshTTL int `yaml:"refresh_ttl" env:"SESSION_REFRESH_TTL" env-default:"604800"` // 7 дней в секундах
+		AccessTTL  int `yaml:"access_ttl" env:"SESSION_ACCESS_TTL" env-default:"900"`      // 15 минут в секундах
+	} `yaml:"session"`
 
 	Cors struct {
 		URL  string   `yaml:"url" env:"CORS_URL"`

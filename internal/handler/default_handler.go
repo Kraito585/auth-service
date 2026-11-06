@@ -108,7 +108,7 @@ func (h *DefaultHandler) Refresh(c fiber.Ctx) error {
 	clientIP := c.IP()
 	userAgent := c.Get("User-Agent")
 
-	newAccess, newRefresh, err := h.srv.Refresh(ctx, refreshToken, clientIP, userAgent)
+	resData, err := h.srv.Refresh(ctx, refreshToken, clientIP, userAgent, "")
 	if err != nil {
 		c.Cookie(&fiber.Cookie{
 			Name:     "refresh_token",
@@ -124,7 +124,7 @@ func (h *DefaultHandler) Refresh(c fiber.Ctx) error {
 	if !h.is_prod {
 		c.Cookie(&fiber.Cookie{
 			Name:     "refresh_token",
-			Value:    newRefresh,
+			Value:    resData.RefreshToken,
 			Expires:  time.Now().Add(7 * 24 * time.Hour),
 			HTTPOnly: true,
 			Secure:   false,
@@ -134,7 +134,7 @@ func (h *DefaultHandler) Refresh(c fiber.Ctx) error {
 	} else {
 		c.Cookie(&fiber.Cookie{
 			Name:     "refresh_token",
-			Value:    newRefresh,
+			Value:    resData.RefreshToken,
 			Expires:  time.Now().Add(7 * 24 * time.Hour),
 			HTTPOnly: true,
 			Secure:   true,
@@ -143,7 +143,7 @@ func (h *DefaultHandler) Refresh(c fiber.Ctx) error {
 		})
 	}
 	return response.OK(c, fiber.Map{
-		"access_token": newAccess,
+		"access_token": resData.AccessToken,
 	})
 }
 
@@ -468,97 +468,5 @@ func (h *DefaultHandler) LoginAuthMethodTOTP(c fiber.Ctx) error {
 
 	return response.OK(c, fiber.Map{
 		"access_token": accessToken,
-	})
-}
-
-// _____/\\\\\\\\\\\______/\\\\\\\\\_________/\\\\\\\\\\\___
-//  ___/\\\/////////\\\__/\\\///////\\\_____/\\\/////////\\\_
-//   __\//\\\______\///__\///______\//\\\___\//\\\______\///__
-//    ___\////\\\___________________/\\\/_____\////\\\_________
-//     ______\////\\\_____________/\\\//__________\////\\\______
-//      _________\////\\\_______/\\\//________________\////\\\___
-//       __/\\\______\//\\\____/\\\/____________/\\\______\//\\\__
-//        _\///\\\\\\\\\\\/____/\\\\\\\\\\\\\\\_\///\\\\\\\\\\\/___
-//         ___\///////////_____\///////////////____\///////////_____
-
-// Создание SSO токена
-func (h *DefaultHandler) PostSSOToken(c fiber.Ctx) error {
-	ctx, span := handlerTracer.Start(c.Context(), "handler.PostSSOToken")
-	defer span.End()
-
-	UUID := c.Locals("user_id").(string)
-
-	token, err := h.srv.PostSSOToken(ctx, UUID)
-	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "ошибка сохранения токена", err.Error())
-	}
-
-	return response.OK(c, fiber.Map{
-		"code": token,
-	})
-}
-
-// Обмен SSO токена на jwt сессиию
-func (h *DefaultHandler) GetSSOToken(c fiber.Ctx) error {
-	ctx, span := handlerTracer.Start(c.Context(), "handler.GetSSOToken")
-	defer span.End()
-
-	var req model.SSOTokenS2S
-
-	if err := c.Bind().JSON(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
-	}
-
-	refreshToken, accessToken, err := h.srv.GetSSOToken(ctx, req.Token, req.ClientIP, req.UserAgent)
-	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "ошибка сохранения токена", err.Error())
-	}
-
-	return response.OK(c, fiber.Map{
-		"AccessToken":  accessToken,
-		"RefreshToken": refreshToken,
-	})
-}
-
-func (h *DefaultHandler) RefreshS2S(c fiber.Ctx) error {
-	ctx, span := handlerTracer.Start(c.Context(), "handler.RefreshS2S")
-	defer span.End()
-
-	var req model.RefreshS2S
-
-	if err := c.Bind().JSON(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
-	}
-
-	refreshToken, accessToken, err := h.srv.Refresh(ctx, req.RefreshKey, req.ClientIP, req.UserAgent)
-	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "ошибка перевыпуска токена", err.Error())
-	}
-
-	return response.OK(c, fiber.Map{
-		"AccessToken":  accessToken,
-		"RefreshToken": refreshToken,
-	})
-}
-
-// Регистрация API ключа
-func (h *DefaultHandler) RegisterPartner(c fiber.Ctx) error {
-	ctx, span := handlerTracer.Start(c.Context(), "handler.RegisterPartner")
-	defer span.End()
-	var req model.SRequest2GetAPI
-
-	if err := c.Bind().JSON(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Неверный формат запроса", err.Error())
-	}
-
-	UUID := c.Locals("user_id").(string)
-
-	apiKey, err := h.srv.RegisterPartner(ctx, UUID, req)
-	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Ошибка регистрации api ключа", err.Error())
-	}
-
-	return response.OK(c, fiber.Map{
-		"apiKey": apiKey,
 	})
 }

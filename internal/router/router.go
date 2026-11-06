@@ -18,6 +18,7 @@ func SetupRoutes(
 	midManager *middleware.Manager,
 	coreHandler *corehandler.DefaultHandler,
 	defaultHandler *handler.DefaultHandler,
+	oidcHandler *handler.OidcHandler,
 	healthCheckers []health.Checker,
 	promEnabled bool,
 	authRedirectURL string,
@@ -95,11 +96,57 @@ func SetupRoutes(
 				midManager.RateLimit("resend_email_mfa", 1, 1*time.Minute),
 				defaultHandler.ResendEmail,
 			)
+
+			api.Post("/create/oidc/code", //Созднание кода авторизации для S2S обмена на сессию
+				midManager.RateLimit("mfa_attempts", 6, 1*time.Minute),
+				midManager.RequireStrictAuth(),
+				oidcHandler.PostOIDCToken,
+			)
 		}
 
-		//ODIC endpoints
+		//OIDC endpoints
+		app.Get("/.well-known/openid-configuration", //TODO: Заменить данные на реальные значения
+			midManager.RateLimit("openid_config", 500, time.Minute),
+			func(c fiber.Ctx) error {
+				return c.JSON(fiber.Map{
+					"issuer": "https://auth.example.com",
 
-		app.Get("/oauth/authorize",
+					"authorization_endpoint": "https://auth.example.com/oauth/authorize",
+					"token_endpoint":         "https://auth.example.com/oauth/token",
+					"userinfo_endpoint":      "https://auth.example.com/oauth/userinfo",
+
+					"jwks_uri": "https://auth.example.com/.well-known/jwks.json",
+
+					"response_types_supported": []string{
+						"code",
+					},
+
+					"grant_types_supported": []string{
+						"authorization_code",
+						"refresh_token",
+					},
+
+					"subject_types_supported": []string{
+						"public",
+					},
+
+					"id_token_signing_alg_values_supported": []string{
+						"RS256",
+					},
+
+					"scopes_supported": []string{
+						"openid",
+						"profile",
+						"email",
+					},
+
+					"code_challenge_methods_supported": []string{
+						"S256",
+					},
+				})
+			})
+
+		app.Get("/oauth/authorize", //Переадресация на страницу авторизации с проверкой redirect_uri
 			midManager.RateLimit("redirect auth", 6, time.Minute),
 			midManager.ValidateRedirectURI(),
 			func(c fiber.Ctx) error {
@@ -118,26 +165,30 @@ func SetupRoutes(
 			},
 		)
 
-		api.Post("/sso", //Созднание кода авторизации для S2S обмена на сессию
-			midManager.RateLimit("mfa_attempts", 6, 1*time.Minute),
-			midManager.RequireStrictAuth(),
-			defaultHandler.PostSSOToken,
-		)
-
-		api.Post("/sso/register/partner",
-			midManager.RateLimit("mfa_attempts", 6, 1*time.Minute),
-			midManager.RequireStrictAuth(),
-			defaultHandler.RegisterPartner,
-		)
-
-		s2s := api.Group("/sso/partner",
+		// TODO: Изменить handler узнать что ещё должно вернутся в теле ответа кроме токенов и их сроков жизни
+		// большая часть описна в modle/oidc.go:TokenResponse
+		app.Post("/oauth/token", //Обмен кода авторизации на сессию
 			midManager.RateLimit("s2s_api", 500, 1*time.Minute),
 			midManager.RequireAPIKey(),
+			oidcHandler.GetOIDCSession,
 		)
-		{
-			s2s.Post("/exchange", defaultHandler.GetSSOToken)
 
-			s2s.Post("/refresh", defaultHandler.RefreshS2S)
-		}
+		app.Post("/oauth/refresh", //Обновление сессии и получение AccessToken и RefreshToken
+			midManager.RateLimit("s2s_api", 500, 1*time.Minute),
+			midManager.RequireAPIKey(),
+			defaultHandler.RefreshS2S,
+		)
+
+		//TODO: Новый функциионал: GET /.well-known/jwks.json
+		//TODO: Новый функциионал: GET /oauth/userinfo
+		//TODO: Новый функциионал: POST /oauth/revoke
+		//TODO: Новый функциионал: POST /oauth/introspect
+
+		api.Post("/oidc/register/partner",
+			midManager.RateLimit("mfa_attempts", 6, 1*time.Minute),
+			midManager.RequireStrictAuth(),
+			oidcHandler.RegisterPartner,
+		)
+
 	}
 }
