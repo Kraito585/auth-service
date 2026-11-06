@@ -105,6 +105,7 @@ func SetupRoutes(
 		}
 
 		//OIDC endpoints
+
 		app.Get("/.well-known/openid-configuration", //TODO: Заменить данные на реальные значения
 			midManager.RateLimit("openid_config", 500, time.Minute),
 			func(c fiber.Ctx) error {
@@ -146,6 +147,8 @@ func SetupRoutes(
 				})
 			})
 
+		app.Get("/.well-known/jwks.json", oidcHandler.JWKS)
+
 		app.Get("/oauth/authorize", //Переадресация на страницу авторизации с проверкой redirect_uri
 			midManager.RateLimit("redirect auth", 6, time.Minute),
 			midManager.ValidateRedirectURI(),
@@ -165,8 +168,6 @@ func SetupRoutes(
 			},
 		)
 
-		// TODO: Изменить handler узнать что ещё должно вернутся в теле ответа кроме токенов и их сроков жизни
-		// большая часть описна в modle/oidc.go:TokenResponse
 		app.Post("/oauth/token", //Обмен кода авторизации на сессию
 			midManager.RateLimit("s2s_api", 500, 1*time.Minute),
 			midManager.RequireAPIKey(),

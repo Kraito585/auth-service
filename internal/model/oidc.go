@@ -1,5 +1,18 @@
 package model
 
+type JWK struct {
+	Kty string `json:"kty"` // Тип ключа ("RSA")
+	Use string `json:"use"` // Назначение ("sig")
+	Alg string `json:"alg"` // Алгоритм ("RS256")
+	Kid string `json:"kid"` // ID ключа
+	N   string `json:"n"`   // Модуль (Base64URL)
+	E   string `json:"e"`   // Экспонента (Base64URL)
+}
+
+type JWKS struct {
+	Keys []JWK `json:"keys"`
+}
+
 type RequestNewOIDCCode struct {
 	ClientID string `json:"client_id"`
 	Nonce    string `json:"nonce"`

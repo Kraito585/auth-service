@@ -39,6 +39,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/google/uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -165,7 +166,10 @@ func (b *Builder) WithJWT() *Builder {
 		return b
 	}
 
-	jwtManager, err := security.NewJWTManager(cfg.PrivateKeyPath, cfg.PublicKeyPath, cfg.AccessTTL)
+	rowKid, _ := uuid.NewV7()
+	kid := rowKid.String()
+
+	jwtManager, err := security.NewJWTManager(cfg.PrivateKeyPath, cfg.PublicKeyPath, kid, cfg.AccessTTL)
 	if err != nil {
 		if !b.app.AppCfg.App.IsProd {
 			b.err = err

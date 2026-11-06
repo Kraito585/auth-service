@@ -184,3 +184,9 @@ func (s *OidcService) RegisterPartner(ctx context.Context, UUID string, req mode
 
 	return API, rawAPIKey, nil
 }
+
+func (s *OidcService) JWKS() model.JWKS {
+	res, _ := s.jwtManager.GetJWKS()
+
+	return res
+}

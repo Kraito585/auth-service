@@ -114,3 +114,9 @@ func (h *OidcHandler) RegisterPartner(c fiber.Ctx) error {
 		"apiKey": apiKey,
 	})
 }
+
+func (h *OidcHandler) JWKS(c fiber.Ctx) error {
+	jwks := h.srv.JWKS()
+	c.Request().Header.Set("Cache-Control", "public, max-age=3600")
+	return c.Status(fiber.StatusOK).JSON(jwks)
+}

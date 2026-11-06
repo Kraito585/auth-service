@@ -1,8 +1,11 @@
 package security
 
 import (
+	"auth-service/internal/model"
 	"crypto/rsa"
+	"encoding/base64"
 	"fmt"
+	"math/big"
 	"os"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 type JWTManager struct {
 	privateKey *rsa.PrivateKey
 	publicKey  *rsa.PublicKey
+	keyID      string
 	accessTTL  time.Duration
 }
 
@@ -22,12 +26,16 @@ type UserClaims struct {
 	jwt.RegisteredClaims
 }
 
-func NewJWTManager(privateKeyPath, publicKeyPath string, ttlMinutes int) (*JWTManager, error) {
+func NewJWTManager(privateKeyPath, publicKeyPath, keyID string, ttlMinutes int) (*JWTManager, error) {
+	if keyID == "" {
+		keyID = "default-key-1"
+	}
+
 	manager := &JWTManager{
+		keyID:     keyID,
 		accessTTL: time.Duration(ttlMinutes) * time.Minute,
 	}
 
-	// 1. Загружаем приватный ключ (если он указан)
 	if privateKeyPath != "" {
 		keyBytes, err := os.ReadFile(privateKeyPath)
 		if err != nil {
@@ -37,9 +45,9 @@ func NewJWTManager(privateKeyPath, publicKeyPath string, ttlMinutes int) (*JWTMa
 		if err != nil {
 			return nil, fmt.Errorf("ошибка парсинга приватного ключа: %w", err)
 		}
+		manager.publicKey = &manager.privateKey.PublicKey
 	}
 
-	// 2. Загружаем публичный ключ (если он указан)
 	if publicKeyPath != "" {
 		keyBytes, err := os.ReadFile(publicKeyPath)
 		if err != nil {
@@ -74,6 +82,8 @@ func (m *JWTManager) GenerateToken(userID string, ttl time.Duration, customClaim
 
 	// 3. Создаем и подписываем токен
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+
+	token.Header["kid"] = m.keyID
 	// m.privateKey — это твой ключ из RSA или строка секрета для HS256
 	return token.SignedString(m.privateKey)
 }
@@ -127,4 +137,33 @@ func (m *JWTManager) ParseAndValidate(tokenString string, requiredFields ...stri
 	}
 
 	return claims, nil
+}
+
+// PublicKey возвращает *rsa.PublicKey (если нужен сырой ключ)
+func (m *JWTManager) PublicKey() *rsa.PublicKey {
+	return m.publicKey
+}
+
+// GetJWKS формирует структуру JWKS из публичного RSA-ключа для /.well-known/jwks.json
+func (m *JWTManager) GetJWKS() (model.JWKS, error) {
+	if m.publicKey == nil {
+		return model.JWKS{}, fmt.Errorf("публичный ключ не инициализирован")
+	}
+
+	// Извлекаем модуль (N) и экспоненту (E) в формате Big-Endian байтов
+	nBytes := m.publicKey.N.Bytes()
+	eBytes := big.NewInt(int64(m.publicKey.E)).Bytes()
+
+	jwk := model.JWK{
+		Kty: "RSA",
+		Use: "sig",
+		Alg: "RS256",
+		Kid: m.keyID,
+		N:   base64.RawURLEncoding.EncodeToString(nBytes),
+		E:   base64.RawURLEncoding.EncodeToString(eBytes),
+	}
+
+	return model.JWKS{
+		Keys: []model.JWK{jwk},
+	}, nil
 }
